@@ -2,6 +2,7 @@
 (() => {
   const by = id => document.getElementById(id);
   const gate = by('dbGate');
+  const form = by('dbForm');
   const input = by('dbPassword');
   const button = by('dbUnlock');
   const status = by('dbStatus');
@@ -63,7 +64,8 @@
     }
   }
 
-  button.addEventListener('click', async () => {
+  form.addEventListener('submit', async event => {
+    event.preventDefault(); // No se envía la contraseña al servidor.
     if (unlocking) return;
     unlocking = true;
     button.disabled = true;
@@ -82,9 +84,6 @@
       button.disabled = false;
       input.disabled = false;
     }
-  });
-  input.addEventListener('keydown', event => {
-    if (event.key === 'Enter') button.click();
   });
   by('namesLink').addEventListener('click', onHistoryClick);
   by('dbDismiss').addEventListener('click', closeGate);

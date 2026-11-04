@@ -71,23 +71,23 @@
 <script src="https://unpkg.com/maplibre-gl@5/dist/maplibre-gl.js"></script>
 
 <div id="dbGate" class="db-gate" hidden role="dialog" aria-modal="true" aria-labelledby="dbGateTitle">
-  <div class="db-card">
+  <form id="dbForm" class="db-card" autocomplete="on" onsubmit="return false">
     <h2 id="dbGateTitle">🔐 Historial local de usuarios OSM</h2>
     <p>Esta función es opcional. La base cifrada solo se descargará y abrirá cuando solicites consultar nombres históricos. Las consultas se realizan en tu navegador, sin la API de Who's That?.</p>
     <label for="dbPassword">Contraseña de la base</label>
-    <input id="dbPassword" type="password" autocomplete="off" placeholder="Contraseña" />
+    <input id="dbPassword" name="password" type="password" autocomplete="current-password" placeholder="Contraseña" required />
     <label class="db-remember"><input id="dbRemember" type="checkbox" checked /> Recordar acceso en este navegador</label>
     <div class="db-actions">
-      <button id="dbUnlock" type="button">Desbloquear y cargar historial</button>
+      <button id="dbUnlock" type="submit">Desbloquear y cargar historial</button>
       <button id="dbDismiss" type="button">Usar sin historial</button>
     </div>
     <p id="dbStatus" class="db-status" role="status">Introduce la contraseña compartida para consultar el historial.</p>
     <small>La primera apertura descarga aproximadamente 120 MB y utiliza memoria para SQLite (~310 MB). Se requiere un navegador moderno de escritorio. Al recordar acceso se guarda una clave local en IndexedDB.</small>
-  </div>
+  </form>
 </div>
 
 <script src="./js/database.js?v=2"></script>
 <script src="./js/app.js?v=2"></script>
-<script src="./js/db-ui.js?v=2"></script>
+<script src="./js/db-ui.js?v=3"></script>
 </body>
 </html>
