@@ -1,7 +1,3 @@
-/*
- * Historial local cifrado (Web Worker): descarga, caché IndexedDB, WebCrypto,
- * GZIP, SQLite WASM. Ninguna consulta de nombres sale del navegador.
- */
 'use strict';
 
 const CDN = 'https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.13.0/';
@@ -10,7 +6,6 @@ const ITERATIONS = 200000;
 let sqlModule = null;
 let localDB = null;
 let version = null;
-let inMemoryKey = null;
 let idb = undefined;
 const inMemoryCache = new Map();
 
@@ -183,7 +178,6 @@ async function unlock(password, remember, savedKey = null) {
   }
   localDB?.close();
   localDB = freshDB;
-  inMemoryKey = key;
   if (remember) {
     try { await putItem('savedKey', key); } catch (_ignored) { progress('Aviso: no se pudo recordar el acceso en este navegador.'); }
   } else {
@@ -216,10 +210,6 @@ async function handle(message) {
       const results = localDB.exec('SELECT user_name, date_first, date_last FROM whosthat WHERE user_id = ? AND user_name <> ? ORDER BY date_first ASC, user_name COLLATE NOCASE', [uid, '']);
       return results.length ? results[0].values.map(([name, first, last]) => ({name, first, last})) : [];
     }
-    case 'lock':
-      localDB?.close(); localDB = null; inMemoryKey = null;
-      await deleteItem('savedKey').catch(() => {});
-      return {ready: false, version};
     case 'version':
       return version;
     default:
