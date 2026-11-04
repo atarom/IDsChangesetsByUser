@@ -296,8 +296,8 @@ const addCS = (c) => {
 
 let currentUserUid = null;
 
-// El historial es optativo: nunca se consulta durante la carga normal del usuario.
-// Solo el clic en «Nombres conocidos» invoca refreshLocalHistory.
+// El historial solo se activa al pulsar «Nombres conocidos».
+// Una vez desbloqueado, se consulta automáticamente al cargar cada usuario.
 const wt = async (uid) => {
   if (!uid) return;
   const selectedUID = String(uid);
@@ -335,7 +335,12 @@ const user = (uid) =>
     $("blocksInfo").textContent = rc?.getAttribute("count") || 0;
     $("activeBlocksInfo").textContent = rc?.getAttribute("active") || 0;
     currentUserUid = String(uid);
-    $("namesInfo").textContent = "Pulsa «Nombres conocidos» para consultar";
+    if (window.WhoDB?.ready) {
+      // La base ya fue desbloqueada: consultar sin volver a pedir contraseña.
+      void wt(currentUserUid);
+    } else {
+      $("namesInfo").textContent = "Pulsa «Nombres conocidos» para consultar";
+    }
   });
 
 const fit = () => {
