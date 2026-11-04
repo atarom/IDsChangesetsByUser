@@ -19,7 +19,7 @@ import xml.etree.ElementTree as ET
 from pathlib import Path
 
 SOURCE = 'https://planet.openstreetmap.org/replication/hour'
-AGENT = 'whosthat-local-updater/1.0 (personal offline OSM data mirror)'
+AGENT = 'IDsChangesetsByUser/1.0 (+https://github.com/atarom/IDsChangesetsByUser)'
 STATE_RE = re.compile(rb'(?m)^sequenceNumber=(\d+)\s*$')
 DATE_RE = re.compile(r'^\d{4}-\d{2}-\d{2}$')
 UPSERT = '''
@@ -87,7 +87,7 @@ def extract_users(gz_path):
 def db_sequence(con):
     item = con.execute("SELECT value FROM metadata WHERE key = 'sequenceNumber'").fetchone()
     if not item or not item[0].isdigit():
-        raise ValueError('Falta la secuencia en metadata; ¿has ejecutado preparar_whosthat.py?')
+        raise ValueError('Falta sequenceNumber válido en metadata de SQLite; verifica la base de datos de origen')
     return int(item[0])
 
 
