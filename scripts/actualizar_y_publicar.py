@@ -12,6 +12,7 @@ import tempfile
 
 from crypto_db import decrypt_database, encrypt_database
 from actualizar_whosthat_rapido import run, SOURCE
+from optimizar_sqlite import optimize_if_needed
 
 
 def main():
@@ -38,8 +39,11 @@ def main():
                 raise RuntimeError(f'Integridad SQLite fallida: {integrity}')
         finally:
             con.close()
+        # Primera ejecución: convertir el esquema. Siguientes: conservar la versión optimizada.
+        # La conversión se realiza fuera del archivo original y verifica TODAS las filas.
+        compact = optimize_if_needed(sqlite_file, Path(td) / 'whosthat-compact.sqlite')
         print('Comprimiendo y cifrando...', flush=True)
-        meta = encrypt_database(sqlite_file, args.encrypted, password, version_path=args.version)
+        meta = encrypt_database(compact, args.encrypted, password, version_path=args.version)
         print(f"Actualización publicada, secuencia {meta['sequenceNumber']}; {meta['records']} registros.")
 
 
