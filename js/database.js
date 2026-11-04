@@ -38,7 +38,6 @@
       return result;
     },
     async lookup(uid) { return this.call('lookup', {uid}); },
-    async lock() { const result = await this.call('lock'); this.ready = false; return result; },
   };
   function onWorkerMessage({data}) {
     if (data.event === 'progress') { observers.forEach(cb => cb(data.message)); return; }
