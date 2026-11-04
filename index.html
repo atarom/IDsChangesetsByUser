@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <meta name="description" content="Consulta y selección de changesets OpenStreetMap con historial local protegido de nombres." />
+  <title>IDsChangesetsByUser · Historial OSM</title>
+  <link rel="stylesheet" href="./css/style.css?v=2" />
+  <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@5/dist/maplibre-gl.css" />
+</head>
+<body>
+
+<div id="overlay" class="ov" hidden>
+  <div class="ovBox">
+    <div class="ovTop">
+      <span id="emoji">🥸</span><span id="ovTitle">Cargando…</span>
+      <button id="ovX" class="ovX" title="Cerrar">✕</button>
+    </div>
+    <textarea id="ovLog" class="ovLog" readonly></textarea>
+  </div>
+</div>
+
+<div class="container">
+  <div class="sections">
+    <div class="left-section">
+      <input id="userName" placeholder="Nombre de usuario">
+      <input id="userUID" type="number" placeholder="UID de usuario">
+      <input id="maxChangesets" type="number" placeholder="Máximo de Changesets" min="1" max="5000">
+      <button id="loadButton">Cargar Changesets</button>
+
+      <div id="extraInfo">
+        <h3>Información del Usuario</h3>
+        <div class="info-item"><span class="info-title">Usuario:</span><span id="userInfo" class="info-content"></span></div>
+        <div class="info-item"><span class="info-title">UID:</span><span id="uidInfo" class="info-content"></span></div>
+        <div class="info-item"><span class="info-title">Changesets Count:</span><span id="changesetsCountInfo" class="info-content"></span></div>
+        <div class="info-item"><span class="info-title">Traces Count:</span><span id="tracesCountInfo" class="info-content"></span></div>
+        <div class="info-item"><span class="info-title">Bloqueos Recibidos:</span><span id="blocksInfo" class="info-content"></span></div>
+        <div class="info-item"><span class="info-title">Bloqueos Activos:</span><span id="activeBlocksInfo" class="info-content"></span></div>
+        <div class="info-item names-item">
+          <a id="namesLink" class="info-title names-link" href="#historial-local" title="Pulsa para consultar el historial local (opcional)">Nombres conocidos:</a>
+          <span id="namesInfo" class="info-content names-info">—</span>
+        </div>
+      </div>
+
+      <div id="finishMessage" hidden></div>
+      <div id="errorContainer"><textarea id="errorLog" placeholder="Sin errores" readonly></textarea></div>
+    </div>
+
+    <div class="right-section">
+      <div id="map"></div>
+      <div class="textareas">
+        <div class="box box-details-column">
+          <div class="box-header"><span>Detalles de changesets</span><span id="summaryInfo">Cargados: 0 · Seleccionados: 0</span></div>
+          <div id="details" class="box-body" data-placeholder="Clic para seleccionar · Mayús+clic para rangos"></div>
+        </div>
+        <div class="right-boxes">
+          <div class="box">
+            <div class="box-header"><span>Todos los IDs</span><button class="copy-btn" data-target="ids" title="Copiar todos los IDs">📋</button></div>
+            <textarea id="ids" class="box-body" placeholder="IDs de Changesets" readonly></textarea>
+          </div>
+          <div class="box box-selected">
+            <div class="box-header"><span>IDs seleccionados</span><button class="copy-btn" data-target="selectedIds" title="Copiar seleccionados">📋</button></div>
+            <textarea id="selectedIds" class="box-body" placeholder="Solo IDs Seleccionados" readonly></textarea>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="https://unpkg.com/maplibre-gl@5/dist/maplibre-gl.js"></script>
+
+<div id="dbGate" class="db-gate" hidden role="dialog" aria-modal="true" aria-labelledby="dbGateTitle">
+  <div class="db-card">
+    <h2 id="dbGateTitle">🔐 Historial local de usuarios OSM</h2>
+    <p>Esta función es opcional. La base cifrada solo se descargará y abrirá cuando solicites consultar nombres históricos. Las consultas se realizan en tu navegador, sin la API de Who's That?.</p>
+    <label for="dbPassword">Contraseña de la base</label>
+    <input id="dbPassword" type="password" autocomplete="off" placeholder="Contraseña" />
+    <label class="db-remember"><input id="dbRemember" type="checkbox" checked /> Recordar acceso en este navegador</label>
+    <div class="db-actions">
+      <button id="dbUnlock" type="button">Desbloquear y cargar historial</button>
+      <button id="dbDismiss" type="button">Usar sin historial</button>
+    </div>
+    <p id="dbStatus" class="db-status" role="status">Introduce la contraseña compartida para consultar el historial.</p>
+    <small>La primera apertura descarga aproximadamente 120 MB y utiliza memoria para SQLite (~310 MB). Se requiere un navegador moderno de escritorio. Al recordar acceso se guarda una clave local en IndexedDB.</small>
+  </div>
+</div>
+
+<script src="./js/database.js?v=2"></script>
+<script src="./js/app.js?v=2"></script>
+<script src="./js/db-ui.js?v=2"></script>
+</body>
+</html>

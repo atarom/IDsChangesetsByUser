@@ -1,0 +1,10 @@
+{
+  "format": "WTHDB01",
+  "filename": "whosthat.db.gz.enc",
+  "sequenceNumber": 123992,
+  "records": 2629487,
+  "updatedAt": "2026-11-04T18:10:38+00:00",
+  "encryptedBytes": 125031444,
+  "sqliteBytes": 309915648,
+  "sha256": "2138426d4cf2d9ff1b7c5eef0ef187920ff164442dfee3d9d73b5294a76a9219"
+}

@@ -1,0 +1,66 @@
+name: Who's That? - actualizar y publicar
+
+# Para usarlo: crea primero el Release «whosthat-data» con la base cifrada,
+# configura WHOSTHAT_DB_PASSWORD en Settings > Secrets > Actions,
+# y configura GitHub Pages con origen GitHub Actions.
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '17 3 * * *'
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: whosthat-base-y-pages
+  cancel-in-progress: false
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      GH_TOKEN: ${{ github.token }}
+      WHOSTHAT_DB_PASSWORD: ${{ secrets.WHOSTHAT_DB_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Comprobar configuración
+        shell: bash
+        run: |
+          test -n "$WHOSTHAT_DB_PASSWORD" || { echo 'Configura WHOSTHAT_DB_PASSWORD en Secrets.'; exit 1; }
+          gh release view whosthat-data >/dev/null || { echo 'Falta el Release whosthat-data inicial.'; exit 1; }
+      - name: Preparar biblioteca Python
+        run: python -m pip install -r requirements.txt
+      - name: Recuperar base cifrada persistente desde Releases
+        run: gh release download whosthat-data --pattern 'whosthat.db.gz.enc' --dir data
+      - name: Actualizar cambios horarios sin perder la secuencia
+        run: python scripts/actualizar_y_publicar.py --workers 4
+      - name: Publicar nueva base cifrada como asset de Release
+        run: gh release upload whosthat-data data/whosthat.db.gz.enc data/version.json --clobber
+      - name: Preparar sitio estático (sin scripts de gestión ni ficheros privados)
+        shell: bash
+        run: |
+          mkdir -p _site/css _site/js _site/data
+          cp index.html _site/
+          cp css/style.css _site/css/
+          cp js/*.js _site/js/
+          cp data/whosthat.db.gz.enc data/version.json _site/data/
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v4
+        with:
+          path: _site
+
+  deploy:
+    needs: update
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
