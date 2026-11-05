@@ -130,14 +130,17 @@
       const load = node('button', 'Cargar usuario', 'hx-load');
       load.type = 'button';
       load.dataset.uid = String(uid);
-      const link = node('a', 'Perfil OSM ↗');
-      link.href = 'https://www.openstreetmap.org/user/' + encodeURIComponent(uid);
+      const link = node('a', 'Consultando perfil…');
       link.target = '_blank';
       link.rel = 'noopener noreferrer';
+      const apiLink = node('a', 'Ficha API ↗');
+      apiLink.href = 'https://www.openstreetmap.org/api/0.6/user/' + encodeURIComponent(uid);
+      apiLink.target = '_blank';
+      apiLink.rel = 'noopener noreferrer';
       const hide = node('button', 'Cerrar detalle', 'hx-secondary');
       hide.type = 'button';
       hide.addEventListener('click', resetDetail);
-      actions.append(load, link, hide);
+      actions.append(load, link, apiLink, hide);
       header.append(actions);
       const list = node('div', undefined, 'hx-names-list');
       for (const entry of response.rows) {
@@ -148,6 +151,22 @@
       if (!response.rows.length) list.append(node('p', 'No hay nombres registrados para este UID.'));
       if (response.more) list.append(node('p', 'Mostrando los primeros 1.000 nombres.'));
       detail.replaceChildren(header, list);
+      void (async () => {
+        try {
+          const response = await fetch('https://api.openstreetmap.org/api/0.6/user/' + encodeURIComponent(uid));
+          if (!response.ok) throw Error('HTTP ' + response.status);
+          const xml = new DOMParser().parseFromString(await response.text(), 'application/xml');
+          const user = xml.getElementsByTagName('user')[0];
+          if (!user || user.getAttribute('id') !== String(uid) || !user.getAttribute('display_name') || xml.getElementsByTagName('parsererror').length) throw Error('La API no ha devuelto un usuario válido para este UID.');
+          if (sequence !== state.detailGeneration || dialog.hidden) return;
+          link.href = 'https://www.openstreetmap.org/user/' + encodeURIComponent(user.getAttribute('display_name'));
+          link.textContent = 'Perfil OSM ↗';
+        } catch (error) {
+          if (sequence !== state.detailGeneration || dialog.hidden) return;
+          link.textContent = 'Perfil no disponible';
+          link.title = error.message;
+        }
+      })();
     } catch (error) { if (sequence === state.detailGeneration && !dialog.hidden) detail.replaceChildren(node('p', 'Error: ' + error.message)); }
   }
   by('hxNameForm').addEventListener('submit', event => {
