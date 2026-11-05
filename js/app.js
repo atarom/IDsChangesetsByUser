@@ -178,8 +178,8 @@ const endDraw = () => { if (!draw)
     return;
 } closed = 1; lasso(true); selectLasso(); };
 const startLoad = async () => { const name = $('userName').value.trim(), uid = $('userUID').value.trim(), limit = Number($('maxChangesets').value); if (!name && !uid)
-    return alert('Especifica nombre de usuario o UID.'); if (!Number.isSafeInteger(limit) || limit < 1 || limit > 5000)
-    return alert('Especifica un máximo de Changesets entre 1 y 5000.'); abortLoad(); const run = activeRun, controller = new AbortController(); loadController = controller; const { signal } = controller; currentUserUid = null; openOv('Cargando…'); msg('• Preparando'); $('finishMessage').hidden = true; for (const id of ['details', 'ids', 'selectedIds', 'errorLog']) {
+    return alert('Especifica nombre de usuario o UID.'); if (!Number.isSafeInteger(limit) || limit < 1)
+    return alert('Especifica un máximo de Changesets válido (entero positivo).'); abortLoad(); const run = activeRun, controller = new AbortController(); loadController = controller; const { signal } = controller; currentUserUid = null; openOv('Cargando…'); msg('• Preparando'); $('finishMessage').hidden = true; for (const id of ['details', 'ids', 'selectedIds', 'errorLog']) {
     const node = $(id);
     if ('value' in node)
         node.value = '';
