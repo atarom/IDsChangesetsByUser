@@ -20,6 +20,14 @@ jobs:
       GH_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+      - name: Validar JavaScript y pruebas de regresión
+        shell: bash
+        run: |
+          for file in js/*.js; do node --check "$file"; done
+          node --test tests/*.test.cjs
       - name: Preparar web y descargar base cifrada publicada
         shell: bash
         run: |
