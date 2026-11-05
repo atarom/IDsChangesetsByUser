@@ -30,3 +30,5 @@ El workflow `deploy-pages.yml` publica GitHub Pages automáticamente al hacer `p
 ## Privacidad y atribución
 
 No publiques el SQLite descifrado. El cifrado protege frente a visitantes sin contraseña, pero **no impide a personas autorizadas extraer la información histórica completa**. Revisa los requisitos de privacidad y la legitimidad de compartir nombres antiguos con terceros. Los datos y las teselas proceden de [OpenStreetMap](https://www.openstreetmap.org/copyright); respeta sus condiciones y atribución.
+
+**Agradecimiento:** A [Ilya Zverev (Zverik)](https://github.com/Zverik) por la idea original de [Who's That?](https://github.com/Zverik/whosthat), un proyecto para registrar y consultar el historial de nombres de usuarios de OpenStreetMap que ha inspirado la parte histórica de esta herramienta.
