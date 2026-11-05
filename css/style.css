@@ -271,86 +271,6 @@ button:hover,
   border-radius: 5px;
   color: var(--t);
 }
-.maplibregl-map {
-  background: #384764;
-  font-family: var(--sans);
-}
-.maplibregl-canvas {
-  outline: 0;
-}
-.maplibregl-ctrl-group,
-.map-toolbar {
-  background: #111a29 !important;
-  border: 1px solid var(--b) !important;
-  box-shadow: 0 2px 10px #0008 !important;
-}
-.maplibregl-ctrl-group button,
-.map-toolbar button {
-  width: 30px;
-  height: 30px;
-  margin: 0;
-  padding: 0;
-  border: 0;
-  border-radius: 0;
-  background: #111a29 !important;
-  color: var(--t);
-  font-size: 16px;
-}
-.maplibregl-ctrl-group button:hover,
-.map-toolbar button:hover {
-  background: #22314a !important;
-}
-.maplibregl-ctrl-group button + button,
-.map-toolbar button + button {
-  border-top: 1px solid var(--b);
-}
-.map-toolbar button.active {
-  background: #315c7d !important;
-  color: #c8f5ff;
-}
-.maplibregl-ctrl-icon {
-  filter: invert(88%) sepia(8%) saturate(873%) hue-rotate(177deg);
-}
-.maplibregl-ctrl-attrib {
-  background: #111a29e8 !important;
-  border: 1px solid var(--b) !important;
-  color: var(--m) !important;
-}
-.maplibregl-ctrl-attrib a {
-  color: var(--a) !important;
-}
-.maplibregl-popup {
-  max-width: min(380px, 88vw) !important;
-}
-.maplibregl-popup-content {
-  padding: 12px 14px;
-  background: #151f31 !important;
-  border: 1px solid var(--b);
-  border-radius: 9px;
-  box-shadow: 0 15px 40px #000a;
-  color: var(--t) !important;
-  font-size: 12px;
-  line-height: 1.45;
-}
-.maplibregl-popup-content strong {
-  color: var(--a);
-}
-.maplibregl-popup-content a {
-  color: var(--sel);
-}
-.maplibregl-popup-close-button {
-  width: auto;
-  margin: 0;
-  padding: 1px 6px;
-  border: 0;
-  background: 0 0 !important;
-  color: var(--t);
-  font-size: 18px;
-}
-.maplibregl-popup-tip {
-  border-top-color: #151f31 !important;
-  border-bottom-color: #151f31 !important;
-}
 .copy-btn {
   display: grid;
   place-items: center;
@@ -484,9 +404,6 @@ button:hover,
     padding: 10px;
   }
 }
-
-
-/* Historial cifrado: ventana mostrada solo al solicitar nombres históricos. */
 .db-gate[hidden] {display:none !important;}
 .db-gate {position:fixed; inset:0; display:grid; place-items:center; background:#050b15dc; z-index:12000; padding:16px;}
 .db-card {width:min(570px, 98vw); padding:24px; border:1px solid var(--b); border-radius:12px; background:var(--p); box-shadow:0 18px 70px #000a; max-height:90vh; overflow:auto;}
@@ -501,3 +418,16 @@ button:hover,
 .db-status {min-height:3em; font:12px/1.5 var(--mono); overflow-wrap:anywhere; color:var(--a) !important;}
 .db-card small {display:block; line-height:1.5; color:var(--m); font-size:11px;}
 @media(max-width:560px) {.db-actions{flex-direction:column;} }
+@media (max-width:900px) and (max-height:500px) and (orientation:landscape){
+  .sections{flex-direction:row;}
+  .left-section{flex:0 0 min(280px,38%);width:min(280px,38%);max-height:none;border-bottom:0;border-right:1px solid var(--b);}
+  .right-section{flex:1;min-width:0;padding:8px;gap:8px;}
+  #map{flex:2;min-height:140px;}
+  .textareas{flex:1;min-height:95px;flex-direction:row;}
+  .box-details-column{flex:1;max-width:none;}
+  .right-boxes{flex:1;flex-direction:column;}
+}
+@media (max-width:600px) and (max-height:550px) and (orientation:portrait){
+  .left-section{max-height:32%;}
+  .textareas{min-height:130px;}
+}
