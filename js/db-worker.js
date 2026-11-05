@@ -1,5 +1,5 @@
 'use strict';
-const CDN = 'https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.13.0/';
+const CDN = 'https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.15.2/';
 const HEADER = new TextEncoder().encode('WTHDB01\0');
 const ITERATIONS = 200000;
 let sqlModule = null;
