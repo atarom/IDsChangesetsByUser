@@ -1,4 +1,3 @@
-/* Historial optativo: nada se inicia hasta pulsar «Nombres conocidos». */
 (() => {
   const by = id => document.getElementById(id);
   const gate = by('dbGate');
@@ -11,7 +10,6 @@
   let initializing = null;
   let unlocking = false;
   const setStatus = text => { status.textContent = text; };
-
   function showGate() {
     gate.hidden = false;
     setStatus('Introduce la contraseña compartida para consultar los nombres históricos.');
@@ -21,16 +19,12 @@
     gate.hidden = true;
     input.value = '';
   }
-
-  // Los mensajes de progreso solo se muestran al usar la característica.
   WhoDB.onProgress(message => {
     setStatus(message);
     if (initializing || unlocking) names.textContent = '⏳ ' + message;
   });
-
   async function onHistoryClick(event) {
     event.preventDefault();
-    // No descargamos 125 MB si aún no se ha cargado ningún usuario OSM.
     if (!window.currentHistoryUid?.()) {
       names.textContent = 'Primero carga un usuario para consultar sus nombres.';
       return;
@@ -49,7 +43,6 @@
     try {
       const result = await initializing;
       if (result.ready) {
-        // Se encontró un acceso recordado en IndexedDB.
         await window.refreshLocalHistory?.();
       } else {
         names.textContent = '🔒 Introduce la contraseña para consultar';
@@ -63,9 +56,8 @@
       initializing = null;
     }
   }
-
   form.addEventListener('submit', async event => {
-    event.preventDefault(); // No se envía la contraseña al servidor.
+    event.preventDefault();
     if (unlocking) return;
     unlocking = true;
     button.disabled = true;

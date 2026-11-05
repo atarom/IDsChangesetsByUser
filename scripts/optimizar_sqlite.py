@@ -1,17 +1,9 @@
 #!/usr/bin/env python3
-"""Convierte Who's That? a SQLite compacto, conservando TODOS sus datos.
-
-Solo reconstruye cuando la tabla original tiene rowid o índices auxiliares.
-No cambia el archivo origen: siempre crea un SQLite nuevo en otro destino.
-Esquemas desconocidos -> error, sin conversión.
-"""
 from __future__ import annotations
-
 import hashlib
 import re
 from pathlib import Path
 import sqlite3
-
 EXPECTED_COLUMNS = [
     ('user_id', 'INTEGER', 1, 1),
     ('user_name', 'TEXT', 1, 2),
@@ -31,8 +23,6 @@ CREATE TABLE whosthat (
     PRIMARY KEY(user_id, user_name)
 ) WITHOUT ROWID
 '''
-
-
 def _schema(con):
     objects = {}
     for typ, name, ddl in con.execute("SELECT type,name,sql FROM sqlite_master WHERE name NOT LIKE 'sqlite_autoindex_%'"):
@@ -49,7 +39,6 @@ def _schema(con):
     mdinfo = [(row[1], row[2].upper(), row[3], row[5])
               for row in con.execute('PRAGMA table_info(metadata)')]
     if mdinfo != [('key', 'TEXT', 0, 1), ('value', 'TEXT', 1, 0)]:
-        # SQLite metadata key TEXT PRIMARY KEY admite null en tablas con rowid.
         raise ValueError('Estructura de metadata inesperada; no se convierte.')
     ddl = objects[('table', 'whosthat')]
     compact = 'WITHOUT ROWID' in ddl.upper()
@@ -59,12 +48,9 @@ def _schema(con):
             raise ValueError(f'Índice inesperado {name}; no se convierte.')
     if compact and not idx:
         return True, None
-    # No manipular otras bases aunque tengan columnas iguales.
     if not re.search(r'PRIMARY\s+KEY\s*\(\s*user_id\s*,\s*user_name\s*\)', ddl, flags=re.IGNORECASE):
         raise ValueError('Clave primaria inesperada; no se convierte.')
     return False, objects[('table', 'metadata')]
-
-
 def _hash_field(h, value):
     if value is None:
         h.update(b'N')
@@ -80,10 +66,7 @@ def _hash_field(h, value):
     h.update(typ)
     h.update(len(buf).to_bytes(8, 'big'))
     h.update(buf)
-
-
 def logical_digest(db_file):
-    """SHA-256 de TODOS los valores de las dos tablas en un orden estable."""
     h = hashlib.sha256()
     counts = []
     with sqlite3.connect(f'file:{Path(db_file).resolve()}?mode=ro', uri=True) as con:
@@ -100,10 +83,7 @@ def logical_digest(db_file):
                 count += 1
             counts.append(count)
     return tuple(counts), h.hexdigest()
-
-
 def optimize_if_needed(source: Path, destination: Path) -> Path:
-    """Si ya está compacta, devuelve el origen. Si no, genera destino validado."""
     source, destination = Path(source), Path(destination)
     if source.resolve() == destination.resolve():
         raise ValueError('El destino debe ser un archivo distinto del origen.')
@@ -119,9 +99,7 @@ def optimize_if_needed(source: Path, destination: Path) -> Path:
         user_version = original.execute('PRAGMA user_version').fetchone()[0]
         app_id = original.execute('PRAGMA application_id').fetchone()[0]
         initial_count = original.execute('SELECT count(*) FROM whosthat').fetchone()[0]
-
     print(f'Creando estructura optimizada para {initial_count:,} registros...', flush=True)
-    # En caso de fallo, no se toca el origen ni se deja un destino que parezca válido.
     try:
         with sqlite3.connect(destination) as con:
             con.execute('PRAGMA page_size=4096')

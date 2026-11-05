@@ -1,12 +1,9 @@
-# Nunca subir una base SQLite descifrada al repositorio
 *.sqlite
 *.sqlite-wal
 *.sqlite-shm
 *.db
 *.db-journal
-# Los blobs grandes se distribuyen como assets de GitHub Releases y GitHub Pages
 /data/*.enc
-# datos temporales y secretos
 .env
 .env.*
 *.key

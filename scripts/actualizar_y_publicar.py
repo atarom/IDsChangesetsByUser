@@ -1,7 +1,4 @@
 #!/usr/bin/env python3
-"""Actualiza, verifica y republica los cambios horarios en un archivo cifrado.
-No sustituye el archivo cifrado si falla una descarga o integridad.
-"""
 import argparse
 from pathlib import Path
 import getpass
@@ -9,12 +6,9 @@ import os
 import sqlite3
 import sys
 import tempfile
-
 from crypto_db import decrypt_database, encrypt_database
 from actualizar_whosthat_rapido import run, SOURCE
 from optimizar_sqlite import optimize_if_needed
-
-
 def main():
     p = argparse.ArgumentParser(description='Actualizar base cifrada Who\'s That?')
     p.add_argument('--encrypted', type=Path, default=Path(__file__).parent.parent / 'data' / 'whosthat.db.gz.enc')
@@ -39,14 +33,10 @@ def main():
                 raise RuntimeError(f'Integridad SQLite fallida: {integrity}')
         finally:
             con.close()
-        # Primera ejecución: convertir el esquema. Siguientes: conservar la versión optimizada.
-        # La conversión se realiza fuera del archivo original y verifica TODAS las filas.
         compact = optimize_if_needed(sqlite_file, Path(td) / 'whosthat-compact.sqlite')
         print('Comprimiendo y cifrando...', flush=True)
         meta = encrypt_database(compact, args.encrypted, password, version_path=args.version)
         print(f"Actualización publicada, secuencia {meta['sequenceNumber']}; {meta['records']} registros.")
-
-
 if __name__ == '__main__':
     try:
         main()

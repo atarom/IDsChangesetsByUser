@@ -1,9 +1,4 @@
 #!/usr/bin/env python3
-"""Formato WTHDB01: magic(8) + salt(16) + nonce(12) + AES-256-GCM(gzip(sqlite)).
-
-Compatible con Web Crypto, derivación PBKDF2-HMAC-SHA256 200000 vueltas.
-Depende de `pip install cryptography` para construir/actualizar el archivo cifrado.
-"""
 import argparse
 from datetime import datetime, timezone
 import getpass
@@ -15,32 +10,24 @@ from pathlib import Path
 import shutil
 import sqlite3
 import tempfile
-
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
-
 MAGIC = b'WTHDB01\x00'
 SALT_BYTES = 16
 IV_BYTES = 12
 KEY_ITERATIONS = 200_000
 CHUNK = 1 << 20
-
-
 def derive(password, salt):
     if not password:
         raise ValueError('La contraseña no puede estar vacía')
     return PBKDF2HMAC(algorithm=hashes.SHA256(), length=32, salt=salt, iterations=KEY_ITERATIONS).derive(password.encode('utf-8'))
-
-
 def inspect_header(enc_path):
     with open(enc_path, 'rb') as file:
         header = file.read(8 + SALT_BYTES + IV_BYTES)
     if len(header) != 36 or header[:8] != MAGIC:
         raise ValueError('Formato de base cifrada no reconocido')
     return header[8:24], header[24:36]
-
-
 def encrypt_database(db_path, enc_path, password, preserve_salt_from=None, version_path=None):
     db_path = Path(db_path)
     enc_path = Path(enc_path)
@@ -77,7 +64,6 @@ def encrypt_database(db_path, enc_path, password, preserve_salt_from=None, versi
                 out.write(encryptor.update(chunk))
             out.write(encryptor.finalize())
             out.write(encryptor.tag)
-        # Atomic replace on same filesystem; copy to adjacent file first.
         target_tmp = enc_path.with_suffix(enc_path.suffix + '.tmp')
         shutil.copyfile(temporary_enc, target_tmp)
         target_tmp.replace(enc_path)
@@ -95,16 +81,12 @@ def encrypt_database(db_path, enc_path, password, preserve_salt_from=None, versi
     if version_path:
         Path(version_path).write_text(json.dumps(meta, indent=2, ensure_ascii=False) + '\n', encoding='utf-8')
     return meta
-
-
 def _sha256(path):
     h = hashlib.sha256()
     with open(path, 'rb') as src:
         for chunk in iter(lambda: src.read(CHUNK), b''):
             h.update(chunk)
     return h.hexdigest()
-
-
 def decrypt_database(enc_path, output_path, password):
     enc_path = Path(enc_path)
     output_path = Path(output_path)
@@ -128,7 +110,7 @@ def decrypt_database(enc_path, output_path, password):
                     raise EOFError('Archivo cifrado incompleto')
                 target.write(decryptor.update(chunk))
                 remaining -= len(chunk)
-            decryptor.finalize()  # no publica datos hasta verificar la etiqueta GCM
+            decryptor.finalize()
         tmp_db = output_path.with_suffix(output_path.suffix + '.tmp')
         try:
             with gzip.open(tmp_gz, 'rb') as gz, open(tmp_db, 'wb') as destination:
@@ -142,8 +124,6 @@ def decrypt_database(enc_path, output_path, password):
             tmp_db.replace(output_path)
         finally:
             tmp_db.unlink(missing_ok=True)
-
-
 def main():
     p = argparse.ArgumentParser(description='Cifra/descifra bases Who\'s That?')
     sp = p.add_subparsers(dest='cmd', required=True)
@@ -156,7 +136,5 @@ def main():
     else:
         decrypt_database(args.encrypted, args.sqlite, password)
         print('Base descifrada correctamente:', args.sqlite)
-
-
 if __name__ == '__main__':
     main()
