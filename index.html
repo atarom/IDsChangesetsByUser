@@ -35,7 +35,7 @@
         <div class="info-item"><span class="info-title">Bloqueos Recibidos:</span><span id="blocksInfo" class="info-content"></span></div>
         <div class="info-item"><span class="info-title">Bloqueos Activos:</span><span id="activeBlocksInfo" class="info-content"></span></div>
         <div class="info-item names-item">
-          <a id="namesLink" class="info-title names-link" href="#historial-local" title="Pulsa para consultar el historial local (opcional)">Nombres conocidos:</a>
+          <div class="names-heading"><a id="namesLink" class="info-title names-link" href="#historial-local" title="Pulsa para consultar el historial local (opcional)">Nombres conocidos:</a><button id="dbExploreOpen" class="db-explore-open" type="button" title="Explorar toda la base de nombres históricos" aria-label="Abrir explorador de nombres históricos">⌕ Explorar</button></div>
           <span id="namesInfo" class="info-content names-info">—</span>
         </div>
       </div>
@@ -79,8 +79,22 @@
     <small>La primera apertura descarga la base cifrada (su tamaño varía con cada actualización) y requiere memoria adicional para SQLite. Se requiere un navegador moderno de escritorio. Al recordar acceso se guarda una clave local en IndexedDB.</small>
   </form>
 </div>
+<div id="historyExplorer" class="history-explorer" hidden role="dialog" aria-modal="true" aria-labelledby="hxTitle">
+  <div class="hx-card">
+    <div class="hx-header"><div><h2 id="hxTitle">Explorador de nombres históricos</h2><p>Base SQLite local · Fechas de observación, no fechas exactas de cambio de nombre.</p></div><button id="hxClose" class="hx-close" type="button" aria-label="Cerrar explorador">✕</button></div>
+    <div class="hx-tabs" role="tablist" aria-label="Modo de exploración"><button id="hxTabNames" type="button" class="hx-tab active" role="tab" aria-selected="true" aria-controls="hxPanelNames" data-tab="names">Buscar nombres</button><button id="hxTabDates" type="button" class="hx-tab" role="tab" aria-selected="false" aria-controls="hxPanelDates" data-tab="dates">Explorar fechas</button><button id="hxTabRanking" type="button" class="hx-tab" role="tab" aria-selected="false" aria-controls="hxPanelRanking" data-tab="ranking">Ranking por UID</button></div>
+    <section id="hxPanelNames" class="hx-panel" role="tabpanel" aria-labelledby="hxTabNames"><form id="hxNameForm" class="hx-form"><label>Tipo de búsqueda<select id="hxMatch"><option value="contains">Contiene</option><option value="starts">Empieza por</option><option value="exact">Nombre exacto</option><option value="regex">Regex (JavaScript)</option></select></label><label>Nombre o patrón<input id="hxName" type="text" maxlength="120" placeholder="Nombre o expresión regular"></label><label>UID (opcional)<input id="hxNameUid" type="number" min="1" step="1" placeholder="Cualquier UID"></label><button type="submit">Buscar</button></form></section>
+    <section id="hxPanelDates" class="hx-panel" role="tabpanel" aria-labelledby="hxTabDates" hidden><form id="hxDateForm" class="hx-form"><label>Tipo de fecha<select id="hxDateMode"><option value="first">Primera observación</option><option value="last">Última observación</option><option value="overlap">Intervalo observado</option></select></label><label>Desde<input id="hxFrom" type="date"></label><label>Hasta<input id="hxTo" type="date"></label><button type="submit">Buscar</button></form></section>
+    <section id="hxPanelRanking" class="hx-panel" role="tabpanel" aria-labelledby="hxTabRanking" hidden><form id="hxRankForm" class="hx-form hx-rank-form"><label>Mínimo de nombres distintos<input id="hxMinimum" type="number" min="1" max="100000" value="2" step="1"></label><button type="submit">Mostrar ranking</button><label>Localizar UID<input id="hxRankUid" type="number" min="1" step="1" placeholder="UID"></label><button id="hxFindRank" type="button" class="hx-secondary">Ver posición</button></form><p id="hxPosition" class="hx-position" role="status"></p></section>
+    <div id="hxStatus" class="hx-status" role="status">Introduce una búsqueda o abre el ranking.</div>
+    <div id="hxResults" class="hx-results" tabindex="0"><p class="hx-empty">Los resultados se mostrarán aquí.</p></div>
+    <div id="hxDetail" class="hx-detail" hidden></div>
+    <div class="hx-footer"><span id="hxPage">Sin resultados</span><div><button id="hxPrev" type="button" disabled>← Anterior</button><button id="hxNext" type="button" disabled>Siguiente →</button></div></div>
+  </div>
+</div>
 <script src="./js/database.js"></script>
 <script src="./js/app.js"></script>
+<script src="./js/db-explorer.js"></script>
 <script src="./js/db-ui.js"></script>
 </body>
 </html>

@@ -17,6 +17,12 @@ El historial de nombres **SQLite** se distribuye cifrado en `data/whosthat.db.gz
 - La base cifrada puede guardarse en IndexedDB; una publicación nueva se descarga si cambia su SHA-256.
 - Las búsquedas de nombres históricos se realizan localmente por UID.
 
+### Explorador histórico independiente
+
+El botón **«⌕ Explorar»** junto a «Nombres conocidos» permite desbloquear la BD **sin cargar ningún usuario**. Abre un explorador con tres pestañas: búsqueda por nombre exacto, fragmento, prefijo o regex (JavaScript), exploración por fechas de observación y ranking de UID con más nombres distintos registrados. Las consultas se procesan en el trabajador SQLite y se muestran por páginas de 100 resultados. Al seleccionar un UID se muestran sus nombres históricos y se ofrece cargar sus changesets en el visor.
+
+Las fechas `date_first` y `date_last` indican primeras y últimas **observaciones**, no fechas exactas de renombrado. El ranking cuenta nombres distintos registrados por UID; no representa necesariamente todos sus cambios reales de nombre. Las búsquedas regex extensas pueden tardar más porque deben examinar los nombres de la base.
+
 ## Publicación
 
 El workflow `deploy-pages.yml` publica GitHub Pages automáticamente al hacer `push` a `main` usando la última base cifrada de Releases, sin regenerarla. El workflow `actualizar-publicar.yml` actualiza la base diariamente o manualmente y también publica la web. Ambos comparten un grupo de concurrencia para evitar solapamientos.

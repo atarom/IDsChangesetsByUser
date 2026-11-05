@@ -52,7 +52,8 @@
       this.version = result.version;
       return result;
     },
-    async lookup(uid) { return this.call('lookup', {uid}); }
+    async lookup(uid) { return this.call('lookup', {uid}); },
+    async explore(params) { return this.call('explore', params); }
   };
   window.WhoDB = api;
 })();
