@@ -56,7 +56,7 @@ let errs = [], order = [], records = new Map(), pending = [], sel = new Set(), p
 let worldExtent = ol.extent.createEmpty(), lassoBounds = null, selectionTextTimer = null;
 let unlocatedIds = [], unlocatedOnly = false, unlocatedSelected = 0;
 let currentUserUid = null, activeRun = 0, loadController = null, spacer = null, windowRows = null, windowStart = -1, windowEnd = -1, listScheduled = false, frozen = false, selectedFeatures = new Set(), resultsReady = false;
-const xml = text => { const document = new DOMParser().parseFromString(text, 'application/xml'); if (document.documentElement?.tagName !== 'osm' || document.getElementsByTagName('parsererror').length) throw Error('Respuesta XML de OSM inválida.'); return document; };
+const xml = text => { const document = new DOMParser().parseFromString(text, 'application/xml'); if (document.documentElement?.tagName !== 'osm' || document.getElementsByTagName('parsererror').length) throw Error('Respuesta XML de OSM inválida.'); const apiError = document.getElementsByTagName('error')[0]; if (apiError) throw Error('Respuesta XML con error de OSM: ' + (apiError.textContent?.trim().slice(0, 300) || 'sin detalles')); return document; };
 const req = async (url, signal) => { const response = await fetch(url, { signal }); if (!response.ok) throw Error(`HTTP ${response.status}`); return response.text(); };
 const validOSMId = value => typeof value === 'string' && /^[1-9]\d*$/.test(value) && Number.isSafeInteger(Number(value));
 const verifyUID = (actual, expected, source) => { if (actual !== expected) throw Error(`ALERTA DE INTEGRIDAD: ${source}: UID recibido ${actual ?? '(ausente)'}, UID solicitado ${expected}.`); };
