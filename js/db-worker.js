@@ -202,18 +202,22 @@ function historyRegex(pattern, cursor) {
   if (pattern.length > 120) throw Error('El patrón regex no puede superar 120 caracteres.');
   let expression;
   try { expression = new RegExp(pattern, 'i'); } catch (error) { throw Error('Regex no válida: ' + error.message); }
-  let after = Number(cursor || 0);
-  if (!Number.isSafeInteger(after) || after < 0) throw Error('Cursor de búsqueda inválido.');
+  let after = null;
+  if (cursor !== undefined && cursor !== null && cursor !== 0) {
+    if (!Array.isArray(cursor) || cursor.length !== 2 || !Number.isSafeInteger(cursor[0]) || cursor[0] <= 0 || typeof cursor[1] !== 'string' || !cursor[1]) throw Error('Cursor de búsqueda inválido.');
+    after = cursor;
+  }
   const rows = [];
   let lastMatch = after;
   while (rows.length <= EXPLORER_PAGE_SIZE) {
-    const batch = historyRows('SELECT rowid,user_id,user_name,date_first,date_last FROM whosthat WHERE rowid > ? AND user_name <> ? ORDER BY rowid LIMIT 2000', [after, '']);
+    const sql = after ? 'SELECT user_id,user_name,date_first,date_last FROM whosthat WHERE (user_id,user_name) > (?,?) AND user_name <> ? ORDER BY user_id,user_name LIMIT 2000' : 'SELECT user_id,user_name,date_first,date_last FROM whosthat WHERE user_name <> ? ORDER BY user_id,user_name LIMIT 2000';
+    const batch = historyRows(sql, after ? [after[0], after[1], ''] : ['']);
     if (!batch.length) break;
-    for (const [rowid, uid, name, first, last] of batch) {
-      after = rowid;
+    for (const [uid, name, first, last] of batch) {
+      after = [uid, name];
       if (!expression.test(name)) continue;
       rows.push({uid, name, first, last});
-      if (rows.length === EXPLORER_PAGE_SIZE) lastMatch = rowid;
+      if (rows.length === EXPLORER_PAGE_SIZE) lastMatch = after;
       if (rows.length > EXPLORER_PAGE_SIZE) break;
     }
     if (rows.length > EXPLORER_PAGE_SIZE || batch.length < 2000) break;
