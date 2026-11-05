@@ -5,8 +5,9 @@
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <meta name="description" content="Consulta y selección de changesets OpenStreetMap con historial local protegido de nombres." />
   <title>IDsChangesetsByUser · Historial OSM</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/ol@10.11.0/ol.css" />
   <link rel="stylesheet" href="./css/style.css" />
-  <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@5/dist/maplibre-gl.css" />
+  <link rel="stylesheet" href="./css/ol-overrides.css" />
 </head>
 <body>
 <div id="overlay" class="ov" hidden>
@@ -62,7 +63,7 @@
     </div>
   </div>
 </div>
-<script src="https://unpkg.com/maplibre-gl@5/dist/maplibre-gl.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/ol@10.11.0/dist/ol.js"></script>
 <div id="dbGate" class="db-gate" hidden role="dialog" aria-modal="true" aria-labelledby="dbGateTitle">
   <form id="dbForm" class="db-card" autocomplete="on" onsubmit="return false">
     <h2 id="dbGateTitle">🔐 Historial local de usuarios OSM</h2>

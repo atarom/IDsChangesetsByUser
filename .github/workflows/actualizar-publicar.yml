@@ -1,19 +1,15 @@
 name: Who's That? - actualizar y publicar
-
 on:
   workflow_dispatch:
   schedule:
     - cron: '23 2 * * *'
-
 permissions:
   contents: write
   pages: write
   id-token: write
-
 concurrency:
   group: whosthat-base-y-pages
   cancel-in-progress: false
-
 jobs:
   update:
     runs-on: ubuntu-latest
@@ -44,14 +40,13 @@ jobs:
         run: |
           mkdir -p _site/css _site/js _site/data
           cp index.html _site/
-          cp css/style.css _site/css/
+          cp css/*.css _site/css/
           cp js/*.js _site/js/
           cp data/whosthat.db.gz.enc data/version.json _site/data/
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v4
         with:
           path: _site
-
   deploy:
     needs: update
     runs-on: ubuntu-latest
