@@ -2,6 +2,8 @@
 
 Consulta y selecciona changesets de usuarios de OpenStreetMap sobre un mapa **OpenLayers WebGL**, con teselas OSM estándar oscurecidas mediante CSS, un listado virtualizado y selección por lazo editable. La aplicación consulta usuarios y changesets mediante la API oficial de OpenStreetMap, sin límite artificial de 5.000 cambios.
 
+Los changesets con modificaciones y sin `bbox` se incluyen en «Todos los IDs» y en «Detalles» como **Sin ubicación**; se pueden seleccionar individualmente o por rango y abrir en OSM, pero no aparecen en el mapa ni se seleccionan mediante lazo. Los changesets sin modificaciones y las coordenadas inválidas se registran en «Errores».
+
 El historial de nombres **SQLite** se distribuye cifrado en `data/whosthat.db.gz.enc` (GZIP + AES-256-GCM). Las consultas históricas se ejecutan en el navegador, sin depender de la API de Who's That?.
 
 **La web funciona sin contraseña ni descarga previa de SQLite.** Para consultar los nombres anteriores:

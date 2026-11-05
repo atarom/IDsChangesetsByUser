@@ -23,3 +23,5 @@
 .ol-cs-popup .ol-cs-close{position:absolute;top:2px;right:3px;width:32px;height:32px;margin:0;padding:0;border:0;background:transparent;color:var(--t);font-size:22px}
 .ol-cs-popup .ol-cs-close:hover{background:var(--p2)}
 @media(max-height:480px){#map .map-toolbar{top:4.4em}#map .ol-attribution{max-width:72%}}
+#details .detail-line a{margin-right:7px;color:var(--a);text-decoration:underline}
+#details .detail-line a:focus-visible{outline:1px solid var(--sel);outline-offset:1px}

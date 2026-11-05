@@ -55,6 +55,19 @@ async function deleteItem(name) {
     tx.onerror = () => reject(tx.error);
   });
 }
+async function pruneOldPayloads(activeKey) {
+  const store = await openStore();
+  if (!store) { for (const key of inMemoryCache.keys()) if (key.startsWith('payload:') && key !== activeKey) inMemoryCache.delete(key); return; }
+  await new Promise((resolve, reject) => {
+    const tx = store.transaction('items', 'readwrite');
+    const request = tx.objectStore('items').openCursor();
+    request.onsuccess = () => { const cursor = request.result; if (!cursor) return; if (typeof cursor.key === 'string' && cursor.key.startsWith('payload:') && cursor.key !== activeKey) cursor.delete(); cursor.continue(); };
+    request.onerror = () => reject(request.error);
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+    tx.onabort = () => reject(tx.error);
+  });
+}
 async function fetchManifest() {
   const url = new URL('../data/version.json', self.location.href);
   let data;
@@ -123,12 +136,13 @@ async function importSQL() {
 }
 async function unlock(password, remember, savedKey = null) {
   if (!version) await fetchManifest();
-  const blob = await downloadPayload();
+  let blob = await downloadPayload();
   progress('Verificando el archivo cifrado…');
   let encrypted = await blob.arrayBuffer();
+  blob = null;
   const hash = new Uint8Array(await crypto.subtle.digest('SHA-256', encrypted));
   const digest = Array.from(hash, value => value.toString(16).padStart(2, '0')).join('');
-  if (digest !== version.sha256) throw Error('El archivo cifrado no coincide con version.json (SHA-256).');
+  if (digest !== version.sha256) { await deleteItem('payload:' + version.sha256).catch(() => {}); throw Error('El archivo cifrado no coincide con version.json (SHA-256).'); }
   const header = new Uint8Array(encrypted.slice(0, 8));
   if (!header.every((value, index) => value === HEADER[index])) throw Error('Formato de base no reconocido (WTHDB01).');
   const salt = new Uint8Array(encrypted.slice(8, 24));
@@ -143,7 +157,7 @@ async function unlock(password, remember, savedKey = null) {
     throw Error('Contraseña incorrecta o base cifrada dañada.');
   }
   encrypted = null;
-  progress('Descomprimiendo SQLite (~310 MB). Puede tardar…');
+  progress(`Descomprimiendo SQLite (${(version.sqliteBytes / 1048576).toFixed(0)} MiB). Puede tardar…`);
   if (typeof DecompressionStream !== 'function') throw Error('Tu navegador no admite DecompressionStream (gzip). Utiliza Chrome, Firefox o Edge actualizados.');
   const stream = new Blob([compressed]).stream().pipeThrough(new DecompressionStream('gzip'));
   compressed = null;
@@ -159,6 +173,7 @@ async function unlock(password, remember, savedKey = null) {
   }
   localDB?.close();
   localDB = freshDB;
+  try { await pruneOldPayloads('payload:' + version.sha256); } catch (error) { progress('Aviso: no se pudieron eliminar versiones antiguas de la caché.'); }
   if (remember) {
     try { await putItem('savedKey', key); } catch (error) { progress('Aviso: no se pudo recordar el acceso en este navegador.'); }
   } else await deleteItem('savedKey').catch(() => {});
