@@ -1,12 +1,9 @@
 name: Who's That? - actualizar y publicar
 
-# Para usarlo: crea primero el Release «whosthat-data» con la base cifrada,
-# configura WHOSTHAT_DB_PASSWORD en Settings > Secrets > Actions,
-# y configura GitHub Pages con origen GitHub Actions.
 on:
   workflow_dispatch:
   schedule:
-    - cron: '17 3 * * *'
+    - cron: '23 2 * * *'
 
 permissions:
   contents: write
