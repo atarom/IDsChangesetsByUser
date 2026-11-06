@@ -1,6 +1,11 @@
 name: Who's That? - actualizar y publicar
 on:
   workflow_dispatch:
+    inputs:
+      copia_ahora:
+        description: 'Guardar una copia cifrada antes de actualizar'
+        type: boolean
+        default: false
   schedule:
     - cron: '23 2 * * *'
 permissions:
@@ -41,6 +46,26 @@ jobs:
         run: python -m pip install -r requirements.txt
       - name: Recuperar base cifrada persistente desde Releases
         run: gh release download whosthat-data --pattern 'whosthat.db.gz.enc' --dir data
+      - name: Comprobar copia semanal
+        id: copia
+        shell: bash
+        run: |
+          if [ "$(date -u +%u)" = "7" ] || [ "${{ inputs.copia_ahora }}" = "true" ]; then
+            echo "guardar=true" >> "$GITHUB_OUTPUT"
+            echo "fecha=$(date -u +%Y-%m-%d)" >> "$GITHUB_OUTPUT"
+            gh release download whosthat-data --pattern 'version.json' --dir data --clobber
+          fi
+      - name: Guardar copia semanal cifrada (30 días)
+        if: steps.copia.outputs.guardar == 'true'
+        uses: actions/upload-artifact@v7
+        with:
+          name: whosthat-backup-${{ steps.copia.outputs.fecha }}
+          path: |
+            data/whosthat.db.gz.enc
+            data/version.json
+          if-no-files-found: error
+          retention-days: 30
+          compression-level: 0
       - name: Actualizar cambios horarios sin perder la secuencia
         run: python scripts/actualizar_y_publicar.py --workers 4
       - name: Publicar nueva base cifrada como asset de Release
