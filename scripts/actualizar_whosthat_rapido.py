@@ -23,6 +23,14 @@ ON CONFLICT(user_id, user_name) DO UPDATE SET
   date_first = min(whosthat.date_first, excluded.date_first),
   date_last  = max(whosthat.date_last,  excluded.date_last)
 '''
+STATS_SQL = '''
+SELECT
+  COALESCE(SUM(w.user_id IS NULL), 0),
+  COALESCE(SUM(w.user_id IS NOT NULL AND (b.date_first < w.date_first OR b.date_last > w.date_last)), 0),
+  COALESCE(SUM(w.user_id IS NOT NULL AND b.date_first >= w.date_first AND b.date_last <= w.date_last), 0)
+FROM temp.whosthat_stats_batch AS b
+LEFT JOIN whosthat AS w ON w.user_id = b.user_id AND w.user_name = b.user_name
+'''
 def request(url, dest=None, attempts=4):
     for attempt in range(attempts):
         try:
@@ -77,20 +85,32 @@ def apply_diff(con, seq, rows):
         existing = db_sequence(con)
         if existing != seq - 1:
             raise ValueError(f'Secuencia inesperada: se esperaba {seq-1}, hay {existing}')
+        con.execute('CREATE TEMP TABLE IF NOT EXISTS whosthat_stats_batch (user_id INTEGER NOT NULL, user_name TEXT NOT NULL, date_first TEXT NOT NULL, date_last TEXT NOT NULL, PRIMARY KEY(user_id, user_name)) WITHOUT ROWID')
+        con.execute('DELETE FROM temp.whosthat_stats_batch')
+        con.executemany('INSERT INTO temp.whosthat_stats_batch VALUES (?, ?, ?, ?)', rows)
+        changes = con.execute(STATS_SQL).fetchone()
+        if sum(changes) != len(rows):
+            raise ValueError('Los pares usuario/nombre del lote no son únicos')
         con.executemany(UPSERT, rows)
         con.execute("UPDATE metadata SET value=? WHERE key='sequenceNumber'", (str(seq),))
         con.commit()
+        return changes
     except Exception:
         con.rollback()
         raise
 def fetch_and_parse(source, seq):
     with tempfile.TemporaryDirectory(prefix='whosthat-osc-') as td:
         tmp = Path(td) / f'{seq}.osc.gz'
+        start = time.perf_counter()
         request(diff_url(source, seq), tmp)
-        return extract_users(tmp)
+        download_seconds = time.perf_counter() - start
+        start = time.perf_counter()
+        rows = extract_users(tmp)
+        return rows, download_seconds, time.perf_counter() - start
 def run(db, source, max_files, status_only, workers):
     if not db.is_file():
         raise FileNotFoundError(f'No existe la base de datos: {db}')
+    started = time.perf_counter()
     con = sqlite3.connect(db, timeout=30, isolation_level=None)
     try:
         con.execute('PRAGMA busy_timeout=30000')
@@ -100,29 +120,41 @@ def run(db, source, max_files, status_only, workers):
         print(f'Estado local: {current}', flush=True)
         if status_only:
             return
+        remote_started = time.perf_counter()
         latest = remote_state(source)
+        remote_seconds = time.perf_counter() - remote_started
         print(f'Estado remoto: {latest}', flush=True)
         if current > latest:
             raise ValueError('La secuencia local es superior a la remota: comprueba la fuente')
+        totals = [0, 0, 0]
+        downloads = parsing = sqlite_seconds = 0.0
         if current == latest:
             print('Ya está al día.', flush=True)
-            return
-        end = min(latest, current + max_files) if max_files is not None else latest
-        print(f'Procesando secuencias {current + 1}–{end}. Puedes interrumpir y reanudar.', flush=True)
-        with ThreadPoolExecutor(max_workers=workers) as pool:
-            tasks = {}
-            next_submit = current + 1
-            for seq in range(current + 1, end + 1):
-                while next_submit <= end and next_submit < seq + 2 * workers:
-                    tasks[next_submit] = pool.submit(fetch_and_parse, source, next_submit)
-                    next_submit += 1
-                rows = tasks.pop(seq).result()
-                apply_diff(con, seq, rows)
-                print(f'{seq}/{latest}: {len(rows)} pares usuario/nombre procesados. Guardado.', flush=True)
-        if end < latest:
-            print(f'Pausa en {end}. Faltan {latest - end} diffs al estado remoto consultado. Repite el comando.', flush=True)
         else:
-            print(f'¡Sincronización terminada hasta {end}!', flush=True)
+            end = min(latest, current + max_files) if max_files is not None else latest
+            print(f'Procesando secuencias {current + 1}–{end}. Puedes interrumpir y reanudar.', flush=True)
+            with ThreadPoolExecutor(max_workers=workers) as pool:
+                tasks = {}
+                next_submit = current + 1
+                for seq in range(current + 1, end + 1):
+                    while next_submit <= end and next_submit < seq + 2 * workers:
+                        tasks[next_submit] = pool.submit(fetch_and_parse, source, next_submit)
+                        next_submit += 1
+                    rows, download_seconds, parse_seconds = tasks.pop(seq).result()
+                    downloads += download_seconds
+                    parsing += parse_seconds
+                    start = time.perf_counter()
+                    changes = apply_diff(con, seq, rows)
+                    sqlite_seconds += time.perf_counter() - start
+                    for i in range(3):
+                        totals[i] += changes[i]
+                    print(f'{seq}/{latest}: {len(rows)} pares procesados; nuevos {changes[0]}, actualizados {changes[1]}, sin cambios {changes[2]}. Guardado.', flush=True)
+            if end < latest:
+                print(f'Pausa en {end}. Faltan {latest - end} diffs al estado remoto consultado. Repite el comando.', flush=True)
+            else:
+                print(f'¡Sincronización terminada hasta {end}!', flush=True)
+        print(f'RESUMEN DATOS: {sum(totals)} pares procesados; nuevos {totals[0]}, actualizados {totals[1]}, sin cambios {totals[2]}.', flush=True)
+        print(f'TIEMPOS DIFFS: estado remoto {remote_seconds:.2f} s | descargas {downloads:.2f} s (suma paralela) | XML {parsing:.2f} s (suma paralela) | SQLite y estadísticas {sqlite_seconds:.2f} s | total real {time.perf_counter() - started:.2f} s.', flush=True)
     finally:
         con.close()
 if __name__ == '__main__':
@@ -139,7 +171,7 @@ if __name__ == '__main__':
         if args.max_files is not None and args.max_files < 1:
             p.error('--max-files debe ser al menos 1')
         if not 1 <= args.workers <= 8:
-            p.error('--workers debe estar entre 1 y 8')
+            p.error('workers debe estar entre 1 y 8')
         run(args.db, args.source, None if args.all else args.max_files, args.status, args.workers)
     except KeyboardInterrupt:
         print('\nInterrumpido. Los diffs ya confirmados permanecen guardados.', file=sys.stderr)

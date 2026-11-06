@@ -30,6 +30,8 @@ jobs:
       - uses: actions/setup-python@v7
         with:
           python-version: '3.12'
+      - name: Validar actualización de base Python
+        run: python -m unittest discover -s tests -p 'test_*.py' -v
       - name: Comprobar configuración
         shell: bash
         run: |
@@ -42,7 +44,11 @@ jobs:
       - name: Actualizar cambios horarios sin perder la secuencia
         run: python scripts/actualizar_y_publicar.py --workers 4
       - name: Publicar nueva base cifrada como asset de Release
-        run: gh release upload whosthat-data data/whosthat.db.gz.enc data/version.json --clobber
+        shell: bash
+        run: |
+          inicio=$SECONDS
+          gh release upload whosthat-data data/whosthat.db.gz.enc data/version.json --clobber
+          echo "TIEMPO PUBLICACIÓN RELEASE: $((SECONDS - inicio)) s"
       - name: Preparar sitio estático (sin scripts de gestión ni ficheros privados)
         shell: bash
         run: |
