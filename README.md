@@ -27,26 +27,17 @@ La primera y la última observación de cada nombre no son fechas exactas de ren
 
 La tabla `whosthat` guarda `user_id`, `user_name`, `date_first` y `date_span`. `date_first` es el número entero de días desde `2005-04-17` y `date_span` es la duración en días hasta la última observación. `metadata` guarda `sequenceNumber`, `schemaVersion=2` y `dateEpoch=2005-04-17`. La tabla utiliza `WITHOUT ROWID`, con clave primaria `(user_id,user_name)`, y no requiere índices adicionales. Solo se admite el formato v2.
 
-### Migración única desde la base cifrada anterior
+### Actualización diaria de SQLite v2
 
-La conversión local se ejecuta una sola vez desde la raíz del repositorio:
+El historial se mantiene exclusivamente en el Release `whosthat-data-v2`, que contiene `whosthat.db.gz.enc` y `version.json`. GitHub Actions descarga los dos archivos, verifica su SHA-256, descifra la base, procesa las réplicas horarias de OSM pendientes y cifra de nuevo el SQLite v2. Antes de publicar, valida el esquema, la fecha base y los intervalos de observación.
 
-```bash
-python3 -m scripts.migrar_sqlite
-```
-
-El programa solicita la ruta de la base cifrada original si no está en `data/`, instala `cryptography` en un entorno virtual aislado si es necesario y pide la contraseña. Conserva intacto el fichero original y crea `data/migracion-v2/whosthat.db.gz.enc` y `data/migracion-v2/version.json`. Compara todos los registros y metadatos antes y después, además de verificar el descifrado de la salida.
-
-**No reemplaces el Release en uso ni despliegues el código antes de preparar el Release v2:** el nuevo lector requiere el manifiesto y el SQLite migrado. Primero valida y publica ambos archivos migrados en un Release separado llamado `whosthat-data-v2`; después publica conjuntamente los cambios del repositorio. Los workflows nuevos leen y actualizan exclusivamente ese Release y comprueban el esquema v2, el tamaño y el SHA-256 del archivo cifrado. El Release anterior `whosthat-data` permanece intacto durante el cambio. Conserva una copia independiente de la base antigua hasta verificar el resultado en la web.
-
-Desde la raíz del proyecto, tras finalizar la migración:
+La actualización se puede iniciar manualmente desde GitHub Actions o mediante:
 
 ```bash
-python3 -m scripts.validar_release data/migracion-v2
-gh release create whosthat-data-v2 data/migracion-v2/whosthat.db.gz.enc data/migracion-v2/version.json --repo atarom/IDsChangesetsByUser --title "Who's That? SQLite v2" --notes "Base migrada a fechas relativas; inicio + duración desde 2005-04-17" --latest=false
+gh workflow run actualizar-publicar.yml --repo atarom/IDsChangesetsByUser -f copia_ahora=true
 ```
 
-Una vez que `whosthat-data-v2` contenga los dos archivos correctos, publica el código de esta versión. El despliegue de GitHub Pages descargará el Release v2; la actualización diaria continuará únicamente sobre v2.
+`copia_ahora=true` guarda una copia cifrada antes de actualizar; el workflow también conserva las copias semanales según su política de retención. La web descarga siempre la versión cifrada publicada y no necesita acceder al SQLite sin cifrar.
 
 ## Privacidad y atribución
 

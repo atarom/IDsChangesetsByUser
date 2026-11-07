@@ -4,6 +4,8 @@
 *.db
 *.db-journal
 /data/*.enc
+/data/version.json
+/data/migracion-v2/
 .env
 .env.*
 *.key

@@ -43,7 +43,7 @@ jobs:
         shell: bash
         run: |
           test -n "$WHOSTHAT_DB_PASSWORD" || { echo 'Configura WHOSTHAT_DB_PASSWORD en Secrets.'; exit 1; }
-          gh release view whosthat-data-v2 >/dev/null || { echo 'Falta el Release whosthat-data-v2 con la base migrada. El Release anterior permanece intacto.'; exit 1; }
+          gh release view whosthat-data-v2 >/dev/null || { echo 'Falta el Release whosthat-data-v2 con la base SQLite v2.'; exit 1; }
       - name: Preparar biblioteca Python
         run: python -m pip install -r requirements.txt
       - name: Validar cifrado y descifrado SQLite
@@ -54,17 +54,16 @@ jobs:
           import tempfile
           from pathlib import Path
           from scripts.crypto_db import encrypt_database, decrypt_database
+          from scripts.formato_fechas import WHOSTHAT_DDL, EPOCH_TEXT, to_days
           with tempfile.TemporaryDirectory() as directory:
               source = Path(directory) / 'original.sqlite'
               encrypted = Path(directory) / 'temporal.enc'
               restored = Path(directory) / 'restaurada.sqlite'
               with sqlite3.connect(source) as db:
                   db.execute('CREATE TABLE metadata (key TEXT PRIMARY KEY, value TEXT NOT NULL)')
-                  db.execute('CREATE TABLE whosthat (user_id INTEGER NOT NULL, user_name TEXT NOT NULL, date_first INTEGER NOT NULL, date_span INTEGER NOT NULL, PRIMARY KEY (user_id, user_name)) WITHOUT ROWID')
-                  db.execute("INSERT INTO metadata VALUES ('sequenceNumber', '1')")
-                  db.execute("INSERT INTO metadata VALUES ('schemaVersion', '2')")
-                  db.execute("INSERT INTO metadata VALUES ('dateEpoch', '2005-04-17')")
-                  db.execute("INSERT INTO whosthat VALUES (1, 'Ñandú 🧭', 7873, 0)")
+                  db.execute(WHOSTHAT_DDL)
+                  db.executemany('INSERT INTO metadata VALUES (?,?)', [('sequenceNumber','1'),('schemaVersion','2'),('dateEpoch',EPOCH_TEXT)])
+                  db.execute('INSERT INTO whosthat VALUES (?,?,?,?)', (1,'Ñandú 🧭',to_days('2026-11-06'),0))
               encrypt_database(source, encrypted, 'PruebaTemporal-2026')
               decrypt_database(encrypted, restored, 'PruebaTemporal-2026')
               assert source.read_bytes() == restored.read_bytes()
