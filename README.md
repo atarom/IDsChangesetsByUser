@@ -1,3 +1,7 @@
+<div align="center">
+  <img src="assets/logo.png" alt="IDsChangesetsByUser" width="340">
+</div>
+
 # IDsChangesetsByUser + historial Who's That? local
 
 Consulta y selecciona changesets de usuarios de OpenStreetMap sobre un mapa **OpenLayers WebGL**, un listado y selección por lazo editable. La aplicación consulta usuarios y changesets mediante la API oficial de OpenStreetMap.
