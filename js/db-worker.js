@@ -6,6 +6,7 @@ const EPOCH_MS = Date.UTC(2005, 3, 17);
 const DAY_MS = 86400000;
 let sqlModule = null;
 let localDB = null;
+let sharedNamesCache = null;
 let version = null;
 let idb = undefined;
 const inMemoryCache = new Map();
@@ -185,6 +186,7 @@ async function unlock(password, remember, savedKey = null) {
   }
   localDB?.close();
   localDB = freshDB;
+  sharedNamesCache = null;
   try { await pruneOldPayloads('payload:' + version.sha256); } catch (error) { progress('Aviso: no se pudieron eliminar versiones antiguas de la caché.'); }
   if (remember) {
     try { await putItem('savedKey', key); } catch (error) { progress('Aviso: no se pudo recordar el acceso en este navegador.'); }
@@ -225,6 +227,36 @@ function historyRows(sql, params = []) {
 function historyPage(rows, map) {
   return {rows: rows.slice(0, EXPLORER_PAGE_SIZE).map(map), more: rows.length > EXPLORER_PAGE_SIZE};
 }
+function historyOrder(message, fields, sortDefault, directionDefault, tie = 'user_id ASC,user_name ASC') {
+  const sort = message.sort === undefined ? sortDefault : String(message.sort);
+  const direction = message.direction === undefined ? directionDefault : String(message.direction);
+  if (!Object.hasOwn(fields, sort) || !['asc', 'desc'].includes(direction)) throw Error('Orden de columnas incorrecto.');
+  return fields[sort] + ' ' + direction.toUpperCase() + ',' + tie;
+}
+function historyRegexSorted(pattern, page, order) {
+  let expression;
+  try { expression = new RegExp(pattern, 'i'); } catch (error) { throw Error('Regex no válida: ' + error.message); }
+  const statement = localDB.prepare('SELECT user_id,user_name,date_first,date_span FROM whosthat WHERE user_name <> ? ORDER BY ' + order);
+  const rows = [];
+  let matches = 0;
+  try {
+    statement.bind(['']);
+    while (statement.step()) {
+      const row = statement.get();
+      if (!expression.test(row[1])) continue;
+      if (matches >= page * EXPLORER_PAGE_SIZE) rows.push(row);
+      matches++;
+      if (rows.length > EXPLORER_PAGE_SIZE) break;
+    }
+  } finally { statement.free(); }
+  return historyPage(rows, historyRecord);
+}
+function sharedNames() {
+  if (sharedNamesCache) return sharedNamesCache;
+  const rows = historyRows('SELECT user_name,COUNT(*),MIN(date_first),MAX(date_first+date_span) FROM whosthat WHERE user_name <> ? GROUP BY user_name HAVING COUNT(*) > 1', ['']);
+  sharedNamesCache = rows.map(([name, total, first, last]) => ({name, total, first: dateText(first), last: dateText(last)}));
+  return sharedNamesCache;
+}
 function historyRegex(pattern, cursor) {
   if (pattern.length > 120) throw Error('El patrón regex no puede superar 120 caracteres.');
   let expression;
@@ -259,6 +291,14 @@ function historyExplore(message) {
     const rows = historyRows('SELECT user_name,date_first,date_span FROM whosthat WHERE user_id = ? AND user_name <> ? ORDER BY date_first ASC,user_name COLLATE NOCASE LIMIT 1001', [uid, '']);
     return {uid, rows: rows.slice(0, 1000).map(([name, first, span]) => ({name, first: dateText(first), last: dateText(first + span)})), more: rows.length > 1000};
   }
+  if (mode === 'shared_users') {
+    const name = String(message.name || '');
+    const page = Number(message.page || 0);
+    if (!name || name.length > 255) throw Error('Nombre compartido incorrecto.');
+    if (!Number.isSafeInteger(page) || page < 0 || page > 100000) throw Error('Página incorrecta.');
+    const rows = historyRows('SELECT user_id,user_name,date_first,date_span FROM whosthat WHERE user_name = ? ORDER BY user_id LIMIT ? OFFSET ?', [name, EXPLORER_PAGE_SIZE + 1, page * EXPLORER_PAGE_SIZE]);
+    return {name, ...historyPage(rows, historyRecord)};
+  }
   if (mode === 'position') {
     const uid = historyUid(message.uid);
     const min = Number(message.min || 1);
@@ -272,10 +312,25 @@ function historyExplore(message) {
   const page = Number(message.page || 0);
   if (!Number.isSafeInteger(page) || page < 0 || page > 100000) throw Error('Página incorrecta.');
   const offset = page * EXPLORER_PAGE_SIZE;
+  if (mode === 'shared') {
+    const filter = String(message.filter || '').trim();
+    if (filter.length > 120) throw Error('Filtro demasiado largo.');
+    const sort = message.sort === undefined ? 'total' : String(message.sort);
+    const direction = message.direction === undefined ? 'desc' : String(message.direction);
+    if (!['name', 'total', 'first', 'last'].includes(sort) || !['asc', 'desc'].includes(direction)) throw Error('Orden de columnas incorrecto.');
+    const filtered = filter ? sharedNames().filter(row => row.name.toLocaleLowerCase().includes(filter.toLocaleLowerCase())) : sharedNames();
+    const collator = new Intl.Collator('es', {sensitivity: 'base'});
+    const sorted = [...filtered].sort((a, b) => {
+      const value = sort === 'name' ? collator.compare(a.name, b.name) : sort === 'total' ? a.total - b.total : a[sort].localeCompare(b[sort]);
+      return (direction === 'asc' ? value : -value) || a.name.localeCompare(b.name);
+    });
+    return historyPage(sorted.slice(offset, offset + EXPLORER_PAGE_SIZE + 1), row => row);
+  }
   if (mode === 'ranking') {
     const min = Number(message.min || 1);
     if (!Number.isSafeInteger(min) || min < 1 || min > 100000) throw Error('Mínimo de nombres inválido.');
-    const rows = historyRows('SELECT user_id,COUNT(*) AS total,MAX(date_first+date_span) AS last FROM whosthat WHERE user_name <> ? GROUP BY user_id HAVING COUNT(*) >= ? ORDER BY total DESC,user_id ASC LIMIT ? OFFSET ?', ['', min, EXPLORER_PAGE_SIZE + 1, offset]);
+    const order = historyOrder(message, {uid: 'user_id', total: 'total', last: 'last'}, 'total', 'desc', 'user_id ASC');
+    const rows = historyRows('SELECT user_id,COUNT(*) AS total,MAX(date_first+date_span) AS last FROM whosthat WHERE user_name <> ? GROUP BY user_id HAVING COUNT(*) >= ? ORDER BY ' + order + ' LIMIT ? OFFSET ?', ['', min, EXPLORER_PAGE_SIZE + 1, offset]);
     return historyPage(rows, ([uid, total, last]) => ({uid, total, last: dateText(last)}));
   }
   if (mode !== 'names' && mode !== 'dates') throw Error('Modo de búsqueda incorrecto.');
@@ -288,13 +343,15 @@ function historyExplore(message) {
     if (!name && !message.uid) throw Error('Introduce un nombre, patrón o UID.');
     if (name.length > 120) throw Error('La búsqueda no puede superar 120 caracteres.');
     if (match === 'regex' && name) {
+      const order = historyOrder(message, {uid: 'user_id', name: 'user_name COLLATE NOCASE', first: 'date_first', last: '(date_first+date_span)'}, 'uid', 'asc');
       if (message.uid) {
         const uid = historyUid(message.uid);
         const expression = (() => { try { return new RegExp(name, 'i'); } catch (error) { throw Error('Regex no válida: ' + error.message); } })();
-        const rows = historyRows('SELECT user_id,user_name,date_first,date_span FROM whosthat WHERE user_id = ? AND user_name <> ? ORDER BY user_name COLLATE NOCASE', [uid, '']).filter(row => expression.test(row[1])).slice(offset, offset + EXPLORER_PAGE_SIZE + 1);
+        const rows = historyRows('SELECT user_id,user_name,date_first,date_span FROM whosthat WHERE user_id = ? AND user_name <> ? ORDER BY ' + order, [uid, '']).filter(row => expression.test(row[1])).slice(offset, offset + EXPLORER_PAGE_SIZE + 1);
         return historyPage(rows, historyRecord);
       }
-      return historyRegex(name, message.cursor);
+      if ((message.sort === undefined || message.sort === 'uid') && (message.direction === undefined || message.direction === 'asc')) return historyRegex(name, message.cursor);
+      return historyRegexSorted(name, page, order);
     }
     if (message.uid) { filters.push('user_id = ?'); params.push(historyUid(message.uid)); }
     if (name && match === 'exact') { filters.push('user_name = ? COLLATE NOCASE'); params.push(name); }
@@ -320,9 +377,9 @@ function historyExplore(message) {
       if (end !== null) { filters.push(col + ' <= ?'); params.push(end); }
     }
   }
-  const sortDate = message.dateMode === 'first' || !message.dateMode ? 'date_first' : '(date_first+date_span)';
-  const sorting = mode === 'dates' ? sortDate + ' DESC,user_id' : 'user_name COLLATE NOCASE,user_id';
-  const rows = historyRows('SELECT user_id,user_name,date_first,date_span FROM whosthat WHERE ' + filters.join(' AND ') + ' ORDER BY ' + sorting + ' LIMIT ? OFFSET ?', [...params, EXPLORER_PAGE_SIZE + 1, offset]);
+  const sortDefault = mode === 'dates' ? (message.dateMode === 'last' ? 'last' : 'first') : 'name';
+  const order = historyOrder(message, {uid: 'user_id', name: 'user_name COLLATE NOCASE', first: 'date_first', last: '(date_first+date_span)'}, sortDefault, mode === 'dates' ? 'desc' : 'asc');
+  const rows = historyRows('SELECT user_id,user_name,date_first,date_span FROM whosthat WHERE ' + filters.join(' AND ') + ' ORDER BY ' + order + ' LIMIT ? OFFSET ?', [...params, EXPLORER_PAGE_SIZE + 1, offset]);
   return historyPage(rows, historyRecord);
 }
 async function handle(message) {

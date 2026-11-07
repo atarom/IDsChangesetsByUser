@@ -1,0 +1,9 @@
+.hx-sort{display:inline-flex;align-items:center;justify-content:flex-start;width:auto;min-height:30px;margin:0;padding:3px 0;border:0;border-radius:0;background:transparent;color:var(--a);font:inherit;font-weight:600;text-align:left;cursor:pointer;white-space:normal;}
+.hx-sort:hover{background:transparent;color:var(--ah);text-decoration:underline;text-underline-offset:3px;}
+.hx-sort:focus-visible,.hx-shared-name:focus-visible{outline:2px solid var(--a);outline-offset:3px;}
+.hx-shared-name{max-width:100%;overflow-wrap:anywhere;text-align:left;white-space:normal;}
+.hx-table[aria-busy="true"]{opacity:.7;}
+.hx-table.hx-table-shared th:nth-child(1),.hx-table.hx-table-shared td:nth-child(1){width:40%;}
+.hx-table.hx-table-shared th:nth-child(2),.hx-table.hx-table-shared td:nth-child(2){width:16%;}
+.hx-table.hx-table-shared th:nth-child(3),.hx-table.hx-table-shared td:nth-child(3),.hx-table.hx-table-shared th:nth-child(4),.hx-table.hx-table-shared td:nth-child(4){width:22%;}
+@media(max-width:600px){.hx-table.hx-table-shared{min-width:600px;}}
