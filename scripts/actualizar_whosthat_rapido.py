@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 import argparse
 from concurrent.futures import ThreadPoolExecutor
 import gzip
@@ -12,25 +11,22 @@ import urllib.error
 import urllib.request
 import xml.etree.ElementTree as ET
 from pathlib import Path
+from formato_fechas import to_days, validate_schema
 SOURCE = 'https://planet.openstreetmap.org/replication/hour'
 AGENT = 'IDsChangesetsByUser/1.0 (+https://github.com/atarom/IDsChangesetsByUser)'
 STATE_RE = re.compile(rb'(?m)^sequenceNumber=(\d+)\s*$')
 DATE_RE = re.compile(r'^\d{4}-\d{2}-\d{2}$')
-UPSERT = '''
-INSERT INTO whosthat (user_id, user_name, date_first, date_last)
+UPSERT = '''INSERT INTO whosthat (user_id, user_name, date_first, date_span)
 VALUES (?, ?, ?, ?)
 ON CONFLICT(user_id, user_name) DO UPDATE SET
-  date_first = min(whosthat.date_first, excluded.date_first),
-  date_last  = max(whosthat.date_last,  excluded.date_last)
-'''
-STATS_SQL = '''
-SELECT
+  date_span = max(whosthat.date_first+whosthat.date_span,excluded.date_first+excluded.date_span)-min(whosthat.date_first,excluded.date_first),
+  date_first = min(whosthat.date_first,excluded.date_first)'''
+STATS_SQL = '''SELECT
   COALESCE(SUM(w.user_id IS NULL), 0),
-  COALESCE(SUM(w.user_id IS NOT NULL AND (b.date_first < w.date_first OR b.date_last > w.date_last)), 0),
-  COALESCE(SUM(w.user_id IS NOT NULL AND b.date_first >= w.date_first AND b.date_last <= w.date_last), 0)
+  COALESCE(SUM(w.user_id IS NOT NULL AND (b.date_first < w.date_first OR b.date_last > w.date_first+w.date_span)), 0),
+  COALESCE(SUM(w.user_id IS NOT NULL AND b.date_first >= w.date_first AND b.date_last <= w.date_first+w.date_span), 0)
 FROM temp.whosthat_stats_batch AS b
-LEFT JOIN whosthat AS w ON w.user_id = b.user_id AND w.user_name = b.user_name
-'''
+LEFT JOIN whosthat AS w ON w.user_id = b.user_id AND w.user_name = b.user_name'''
 def request(url, dest=None, attempts=4):
     for attempt in range(attempts):
         try:
@@ -61,17 +57,17 @@ def extract_users(gz_path):
         for _event, elem in ET.iterparse(raw, events=('end',)):
             attrs = elem.attrib
             uid, name = attrs.get('uid'), attrs.get('user')
-            date = attrs.get('timestamp') or attrs.get('created_at')
-            if uid and name and date:
-                if not uid.isdigit() or not DATE_RE.fullmatch(date[:10]):
-                    raise ValueError(f'UID/fecha incorrectos en diff: {uid!r}, {date!r}')
-                d = date[:10]
+            timestamp = attrs.get('timestamp') or attrs.get('created_at')
+            if uid and name and timestamp:
+                if not uid.isdigit() or not DATE_RE.fullmatch(timestamp[:10]):
+                    raise ValueError(f'UID/fecha incorrectos en diff: {uid!r}, {timestamp!r}')
+                day = timestamp[:10]
                 key = (int(uid), name)
                 if key in users:
                     first, last = users[key]
-                    users[key] = (min(first, d), max(last, d))
+                    users[key] = (min(first, day), max(last, day))
                 else:
-                    users[key] = (d, d)
+                    users[key] = (day, day)
             elem.clear()
     return [(uid, name, first, last) for (uid, name), (first, last) in users.items()]
 def db_sequence(con):
@@ -80,18 +76,25 @@ def db_sequence(con):
         raise ValueError('Falta sequenceNumber válido en metadata de SQLite; verifica la base de datos de origen')
     return int(item[0])
 def apply_diff(con, seq, rows):
+    validate_schema(con)
+    converted = []
+    for uid, name, first, last in rows:
+        a, b = to_days(first), to_days(last)
+        if b < a:
+            raise ValueError('Intervalo de observación negativo')
+        converted.append((uid, name, a, b))
     con.execute('BEGIN IMMEDIATE')
     try:
         existing = db_sequence(con)
         if existing != seq - 1:
             raise ValueError(f'Secuencia inesperada: se esperaba {seq-1}, hay {existing}')
-        con.execute('CREATE TEMP TABLE IF NOT EXISTS whosthat_stats_batch (user_id INTEGER NOT NULL, user_name TEXT NOT NULL, date_first TEXT NOT NULL, date_last TEXT NOT NULL, PRIMARY KEY(user_id, user_name)) WITHOUT ROWID')
+        con.execute('CREATE TEMP TABLE IF NOT EXISTS whosthat_stats_batch (user_id INTEGER NOT NULL,user_name TEXT NOT NULL,date_first INTEGER NOT NULL,date_last INTEGER NOT NULL,PRIMARY KEY(user_id,user_name)) WITHOUT ROWID')
         con.execute('DELETE FROM temp.whosthat_stats_batch')
-        con.executemany('INSERT INTO temp.whosthat_stats_batch VALUES (?, ?, ?, ?)', rows)
+        con.executemany('INSERT INTO temp.whosthat_stats_batch VALUES (?,?,?,?)', converted)
         changes = con.execute(STATS_SQL).fetchone()
         if sum(changes) != len(rows):
             raise ValueError('Los pares usuario/nombre del lote no son únicos')
-        con.executemany(UPSERT, rows)
+        con.executemany(UPSERT, ((uid, name, a, b-a) for uid, name, a, b in converted))
         con.execute("UPDATE metadata SET value=? WHERE key='sequenceNumber'", (str(seq),))
         con.commit()
         return changes
@@ -116,6 +119,7 @@ def run(db, source, max_files, status_only, workers):
         con.execute('PRAGMA busy_timeout=30000')
         con.execute('PRAGMA journal_mode=DELETE')
         con.execute('PRAGMA foreign_keys=ON')
+        validate_schema(con, integrity=True)
         current = db_sequence(con)
         print(f'Estado local: {current}', flush=True)
         if status_only:

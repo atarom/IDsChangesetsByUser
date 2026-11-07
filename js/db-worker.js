@@ -2,6 +2,8 @@
 const CDN = 'https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.15.2/';
 const HEADER = new TextEncoder().encode('WTHDB01\0');
 const ITERATIONS = 200000;
+const EPOCH_MS = Date.UTC(2005, 3, 17);
+const DAY_MS = 86400000;
 let sqlModule = null;
 let localDB = null;
 let version = null;
@@ -68,19 +70,23 @@ async function pruneOldPayloads(activeKey) {
     tx.onabort = () => reject(tx.error);
   });
 }
+function checkManifest(data) {
+  if (!data || data.format !== 'WTHDB01' || data.schemaVersion !== 2 || data.dateEpoch !== '2005-04-17' || !/^[a-f0-9]{64}$/.test(data.sha256) || !Number.isSafeInteger(data.sequenceNumber) || !Number.isSafeInteger(data.records) || !Number.isSafeInteger(data.sqliteBytes) || !Number.isSafeInteger(data.encryptedBytes)) throw Error('La base publicada no utiliza el formato exclusivo de fechas relativas v2.');
+  return data;
+}
 async function fetchManifest() {
   const url = new URL('../data/version.json', self.location.href);
   let data;
   try {
     const response = await fetch(url, {cache: 'no-store'});
     if (!response.ok) throw Error(`HTTP ${response.status}`);
-    data = await response.json();
-    if (data.format !== 'WTHDB01' || !/^[a-f0-9]{64}$/.test(data.sha256)) throw Error('Manifest de base no válido');
+    data = checkManifest(await response.json());
     try { await putItem('manifest', data); } catch (error) { progress('Aviso: no se pudo guardar el manifiesto.'); }
   } catch (error) {
     data = await readItem('manifest');
-    if (!data) throw Error(`No se pudo leer data/version.json: ${error.message}`);
-    progress('Sin conexión: usando la última versión guardada en este navegador.');
+    if (!data) throw Error(`No se pudo leer una versión v2 válida: ${error.message}`);
+    checkManifest(data);
+    progress('Sin conexión: usando la última versión v2 guardada en este navegador.');
   }
   version = data;
   return data;
@@ -162,14 +168,20 @@ async function unlock(password, remember, savedKey = null) {
   const stream = new Blob([compressed]).stream().pipeThrough(new DecompressionStream('gzip'));
   compressed = null;
   let sqliteArray = await new Response(stream).arrayBuffer();
-  progress('Abriendo e indexando SQLite en el navegador…');
+  progress('Abriendo SQLite y verificando el formato v2…');
   const SQL = await importSQL();
   const freshDB = new SQL.Database(new Uint8Array(sqliteArray));
   sqliteArray = null;
-  const test = freshDB.exec("SELECT value FROM metadata WHERE key='sequenceNumber' LIMIT 1");
-  if (!test.length || Number(test[0].values[0][0]) !== Number(version.sequenceNumber)) {
+  try {
+    const values = freshDB.exec('SELECT key,value FROM metadata');
+    const meta = new Map(values[0]?.values || []);
+    const columns = freshDB.exec('PRAGMA table_info(whosthat)')[0]?.values || [];
+    const expected = ['user_id', 'user_name', 'date_first', 'date_span'];
+    const types = ['INTEGER', 'TEXT', 'INTEGER', 'INTEGER'];
+    if (meta.get('schemaVersion') !== '2' || meta.get('dateEpoch') !== '2005-04-17' || Number(meta.get('sequenceNumber')) !== version.sequenceNumber || columns.length !== 4 || columns.some((col, i) => col[1] !== expected[i] || String(col[2]).toUpperCase() !== types[i] || (i < 2 && col[5] !== i + 1)) || Number(freshDB.exec('SELECT COUNT(*) FROM whosthat')[0]?.values[0][0]) !== version.records) throw Error('Base SQLite incompatible: se exige exclusivamente el formato de fechas relativas v2.');
+  } catch (error) {
     freshDB.close();
-    throw Error('La secuencia de SQLite no coincide con el manifiesto.');
+    throw error;
   }
   localDB?.close();
   localDB = freshDB;
@@ -179,6 +191,21 @@ async function unlock(password, remember, savedKey = null) {
   } else await deleteItem('savedKey').catch(() => {});
   progress('¡Historial listo para consultas!');
   return {ready: true, version, persistent: !!remember};
+}
+function dateText(offset) {
+  if (!Number.isSafeInteger(offset)) throw Error('Desplazamiento de fecha incorrecto');
+  const date = new Date(EPOCH_MS + offset * DAY_MS);
+  if (Number.isNaN(date.getTime())) throw Error('Fecha fuera del rango admitido');
+  return date.toISOString().slice(0, 10);
+}
+function dayOffset(value) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) throw Error('Fecha incorrecta');
+  const timestamp = Date.parse(value + 'T00:00:00Z');
+  if (!Number.isFinite(timestamp) || new Date(timestamp).toISOString().slice(0, 10) !== value) throw Error('Fecha incorrecta');
+  return Math.round((timestamp - EPOCH_MS) / DAY_MS);
+}
+function historyRecord([uid, name, first, span]) {
+  return {uid, name, first: dateText(first), last: dateText(first + span)};
 }
 const EXPLORER_PAGE_SIZE = 100;
 function historyUid(value) {
@@ -210,13 +237,13 @@ function historyRegex(pattern, cursor) {
   const rows = [];
   let lastMatch = after;
   while (rows.length <= EXPLORER_PAGE_SIZE) {
-    const sql = after ? 'SELECT user_id,user_name,date_first,date_last FROM whosthat WHERE (user_id,user_name) > (?,?) AND user_name <> ? ORDER BY user_id,user_name LIMIT 2000' : 'SELECT user_id,user_name,date_first,date_last FROM whosthat WHERE user_name <> ? ORDER BY user_id,user_name LIMIT 2000';
+    const sql = after ? 'SELECT user_id,user_name,date_first,date_span FROM whosthat WHERE (user_id,user_name) > (?,?) AND user_name <> ? ORDER BY user_id,user_name LIMIT 2000' : 'SELECT user_id,user_name,date_first,date_span FROM whosthat WHERE user_name <> ? ORDER BY user_id,user_name LIMIT 2000';
     const batch = historyRows(sql, after ? [after[0], after[1], ''] : ['']);
     if (!batch.length) break;
-    for (const [uid, name, first, last] of batch) {
+    for (const [uid, name, first, span] of batch) {
       after = [uid, name];
       if (!expression.test(name)) continue;
-      rows.push({uid, name, first, last});
+      rows.push(historyRecord([uid, name, first, span]));
       if (rows.length === EXPLORER_PAGE_SIZE) lastMatch = after;
       if (rows.length > EXPLORER_PAGE_SIZE) break;
     }
@@ -229,8 +256,8 @@ function historyExplore(message) {
   const mode = String(message.mode || '');
   if (mode === 'user') {
     const uid = historyUid(message.uid);
-    const rows = historyRows('SELECT user_name,date_first,date_last FROM whosthat WHERE user_id = ? AND user_name <> ? ORDER BY date_first ASC,user_name COLLATE NOCASE LIMIT 1001', [uid, '']);
-    return {uid, rows: rows.slice(0, 1000).map(([name, first, last]) => ({name, first, last})), more: rows.length > 1000};
+    const rows = historyRows('SELECT user_name,date_first,date_span FROM whosthat WHERE user_id = ? AND user_name <> ? ORDER BY date_first ASC,user_name COLLATE NOCASE LIMIT 1001', [uid, '']);
+    return {uid, rows: rows.slice(0, 1000).map(([name, first, span]) => ({name, first: dateText(first), last: dateText(first + span)})), more: rows.length > 1000};
   }
   if (mode === 'position') {
     const uid = historyUid(message.uid);
@@ -248,8 +275,8 @@ function historyExplore(message) {
   if (mode === 'ranking') {
     const min = Number(message.min || 1);
     if (!Number.isSafeInteger(min) || min < 1 || min > 100000) throw Error('Mínimo de nombres inválido.');
-    const rows = historyRows('SELECT user_id,COUNT(*) AS total,MAX(date_last) AS last FROM whosthat WHERE user_name <> ? GROUP BY user_id HAVING COUNT(*) >= ? ORDER BY total DESC,user_id ASC LIMIT ? OFFSET ?', ['', min, EXPLORER_PAGE_SIZE + 1, offset]);
-    return historyPage(rows, ([uid, total, last]) => ({uid, total, last}));
+    const rows = historyRows('SELECT user_id,COUNT(*) AS total,MAX(date_first+date_span) AS last FROM whosthat WHERE user_name <> ? GROUP BY user_id HAVING COUNT(*) >= ? ORDER BY total DESC,user_id ASC LIMIT ? OFFSET ?', ['', min, EXPLORER_PAGE_SIZE + 1, offset]);
+    return historyPage(rows, ([uid, total, last]) => ({uid, total, last: dateText(last)}));
   }
   if (mode !== 'names' && mode !== 'dates') throw Error('Modo de búsqueda incorrecto.');
   const filters = ['user_name <> ?'];
@@ -264,8 +291,8 @@ function historyExplore(message) {
       if (message.uid) {
         const uid = historyUid(message.uid);
         const expression = (() => { try { return new RegExp(name, 'i'); } catch (error) { throw Error('Regex no válida: ' + error.message); } })();
-        const rows = historyRows('SELECT user_id,user_name,date_first,date_last FROM whosthat WHERE user_id = ? AND user_name <> ? ORDER BY user_name COLLATE NOCASE', [uid, '']).filter(row => expression.test(row[1])).slice(offset, offset + EXPLORER_PAGE_SIZE + 1);
-        return historyPage(rows, ([uid, name, first, last]) => ({uid, name, first, last}));
+        const rows = historyRows('SELECT user_id,user_name,date_first,date_span FROM whosthat WHERE user_id = ? AND user_name <> ? ORDER BY user_name COLLATE NOCASE', [uid, '']).filter(row => expression.test(row[1])).slice(offset, offset + EXPLORER_PAGE_SIZE + 1);
+        return historyPage(rows, historyRecord);
       }
       return historyRegex(name, message.cursor);
     }
@@ -279,22 +306,24 @@ function historyExplore(message) {
   } else {
     const from = String(message.from || ''), to = String(message.to || '');
     if (!from && !to) throw Error('Introduce al menos una fecha.');
-    for (const date of [from, to]) if (date && (!/^\d{4}-\d{2}-\d{2}$/.test(date) || Number.isNaN(Date.parse(date)))) throw Error('Fecha incorrecta.');
-    if (from && to && from > to) throw Error('La fecha inicial es posterior a la final.');
+    const start = from ? dayOffset(from) : null;
+    const end = to ? dayOffset(to) : null;
+    if (from && to && start > end) throw Error('La fecha inicial es posterior a la final.');
     const dateMode = String(message.dateMode || 'first');
     if (!['first', 'last', 'overlap'].includes(dateMode)) throw Error('Tipo de fecha incorrecto.');
     if (dateMode === 'overlap') {
-      if (from) { filters.push('date_last >= ?'); params.push(from); }
-      if (to) { filters.push('date_first <= ?'); params.push(to); }
+      if (start !== null) { filters.push('(date_first+date_span) >= ?'); params.push(start); }
+      if (end !== null) { filters.push('date_first <= ?'); params.push(end); }
     } else {
-      const col = dateMode === 'first' ? 'date_first' : 'date_last';
-      if (from) { filters.push(col + ' >= ?'); params.push(from); }
-      if (to) { filters.push(col + ' <= ?'); params.push(to); }
+      const col = dateMode === 'first' ? 'date_first' : '(date_first+date_span)';
+      if (start !== null) { filters.push(col + ' >= ?'); params.push(start); }
+      if (end !== null) { filters.push(col + ' <= ?'); params.push(end); }
     }
   }
-  const sorting = mode === 'dates' ? (message.dateMode === 'first' ? 'date_first' : 'date_last') + ' DESC,user_id' : 'user_name COLLATE NOCASE,user_id';
-  const rows = historyRows('SELECT user_id,user_name,date_first,date_last FROM whosthat WHERE ' + filters.join(' AND ') + ' ORDER BY ' + sorting + ' LIMIT ? OFFSET ?', [...params, EXPLORER_PAGE_SIZE + 1, offset]);
-  return historyPage(rows, ([uid, name, first, last]) => ({uid, name, first, last}));
+  const sortDate = message.dateMode === 'first' || !message.dateMode ? 'date_first' : '(date_first+date_span)';
+  const sorting = mode === 'dates' ? sortDate + ' DESC,user_id' : 'user_name COLLATE NOCASE,user_id';
+  const rows = historyRows('SELECT user_id,user_name,date_first,date_span FROM whosthat WHERE ' + filters.join(' AND ') + ' ORDER BY ' + sorting + ' LIMIT ? OFFSET ?', [...params, EXPLORER_PAGE_SIZE + 1, offset]);
+  return historyPage(rows, historyRecord);
 }
 async function handle(message) {
   switch (message.action) {
@@ -316,8 +345,8 @@ async function handle(message) {
       const uid = Number(message.uid);
       if (!Number.isSafeInteger(uid) || uid <= 0) throw Error('UID incorrecto');
       if (!localDB) throw Error('Primero debes desbloquear la base local');
-      const results = localDB.exec('SELECT user_name, date_first, date_last FROM whosthat WHERE user_id = ? AND user_name <> ? ORDER BY date_first ASC, user_name COLLATE NOCASE', [uid, '']);
-      return results.length ? results[0].values.map(([name, first, last]) => ({name, first, last})) : [];
+      const results = localDB.exec('SELECT user_name,date_first,date_span FROM whosthat WHERE user_id = ? AND user_name <> ? ORDER BY date_first ASC,user_name COLLATE NOCASE', [uid, '']);
+      return results.length ? results[0].values.map(([name, first, span]) => ({name, first: dateText(first), last: dateText(first + span)})) : [];
     }
     case 'explore':
       return historyExplore(message);

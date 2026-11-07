@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 import argparse
 from datetime import datetime, timezone
 import getpass
@@ -13,6 +12,10 @@ import tempfile
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
+try:
+    from .formato_fechas import EPOCH_TEXT, SCHEMA_VERSION, assert_data_ranges, validate_schema
+except ImportError:
+    from formato_fechas import EPOCH_TEXT, SCHEMA_VERSION, assert_data_ranges, validate_schema
 MAGIC = b'WTHDB01\x00'
 SALT_BYTES = 16
 IV_BYTES = 12
@@ -33,11 +36,10 @@ def encrypt_database(db_path, enc_path, password, preserve_salt_from=None, versi
     enc_path = Path(enc_path)
     if not db_path.is_file():
         raise FileNotFoundError(db_path)
-    con = sqlite3.connect(f'file:{db_path}?mode=ro', uri=True)
+    con = sqlite3.connect(f'file:{db_path.resolve()}?mode=ro', uri=True)
     try:
-        check = con.execute('PRAGMA integrity_check').fetchone()[0]
-        if check != 'ok':
-            raise ValueError(f'Integridad SQLite incorrecta: {check}')
+        validate_schema(con, integrity=True)
+        assert_data_ranges(con)
         seq = con.execute("SELECT value FROM metadata WHERE key='sequenceNumber'").fetchone()[0]
         count = con.execute('SELECT count(*) FROM whosthat').fetchone()[0]
     finally:
@@ -70,6 +72,8 @@ def encrypt_database(db_path, enc_path, password, preserve_salt_from=None, versi
     digest = _sha256(enc_path)
     meta = {
         'format': 'WTHDB01',
+        'schemaVersion': int(SCHEMA_VERSION),
+        'dateEpoch': EPOCH_TEXT,
         'filename': enc_path.name,
         'sequenceNumber': int(seq),
         'records': int(count),
@@ -115,7 +119,7 @@ def decrypt_database(enc_path, output_path, password):
         try:
             with gzip.open(tmp_gz, 'rb') as gz, open(tmp_db, 'wb') as destination:
                 shutil.copyfileobj(gz, destination, CHUNK)
-            connection = sqlite3.connect(f'file:{tmp_db}?mode=ro', uri=True)
+            connection = sqlite3.connect(f'file:{tmp_db.resolve()}?mode=ro', uri=True)
             try:
                 if connection.execute('PRAGMA quick_check').fetchone()[0] != 'ok':
                     raise ValueError('Base descifrada no supera quick_check')

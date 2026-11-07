@@ -21,7 +21,32 @@ El historial de nombres **SQLite** se distribuye cifrado en `data/whosthat.db.gz
 
 El botón **«⌕ Explorar»** junto a «Nombres conocidos» permite desbloquear la BD **sin cargar ningún usuario**. Abre un explorador con tres pestañas: búsqueda por nombre exacto, fragmento, prefijo o regex, exploración por fechas de observación y ranking de UID con más nombres distintos registrados. Las consultas se procesan en el trabajador SQLite y se muestran por páginas de 100 resultados. Al seleccionar un UID se muestran sus nombres históricos y se ofrece cargar sus changesets en el visor.
 
-Las fechas `date_first` y `date_last` indican primeras y últimas **observaciones**, no fechas exactas de renombrado. El ranking cuenta nombres distintos registrados por UID; no representa necesariamente todos sus cambios reales de nombre. Las búsquedas regex extensas pueden tardar más porque deben examinar los nombres de la base.
+La primera y la última observación de cada nombre no son fechas exactas de renombrado. El ranking cuenta nombres distintos registrados por UID; no representa necesariamente todos sus cambios reales de nombre. Las búsquedas regex extensas pueden tardar más porque deben examinar los nombres de la base.
+
+### Almacenamiento SQLite v2
+
+La tabla `whosthat` guarda `user_id`, `user_name`, `date_first` y `date_span`. `date_first` es el número entero de días desde `2005-04-17` y `date_span` es la duración en días hasta la última observación. `metadata` guarda `sequenceNumber`, `schemaVersion=2` y `dateEpoch=2005-04-17`. La tabla utiliza `WITHOUT ROWID`, con clave primaria `(user_id,user_name)`, y no requiere índices adicionales. Solo se admite el formato v2.
+
+### Migración única desde la base cifrada anterior
+
+La conversión local se ejecuta una sola vez desde la raíz del repositorio:
+
+```bash
+python3 -m scripts.migrar_sqlite
+```
+
+El programa solicita la ruta de la base cifrada original si no está en `data/`, instala `cryptography` en un entorno virtual aislado si es necesario y pide la contraseña. Conserva intacto el fichero original y crea `data/migracion-v2/whosthat.db.gz.enc` y `data/migracion-v2/version.json`. Compara todos los registros y metadatos antes y después, además de verificar el descifrado de la salida.
+
+**No reemplaces el Release en uso ni despliegues el código antes de preparar el Release v2:** el nuevo lector requiere el manifiesto y el SQLite migrado. Primero valida y publica ambos archivos migrados en un Release separado llamado `whosthat-data-v2`; después publica conjuntamente los cambios del repositorio. Los workflows nuevos leen y actualizan exclusivamente ese Release y comprueban el esquema v2, el tamaño y el SHA-256 del archivo cifrado. El Release anterior `whosthat-data` permanece intacto durante el cambio. Conserva una copia independiente de la base antigua hasta verificar el resultado en la web.
+
+Desde la raíz del proyecto, tras finalizar la migración:
+
+```bash
+python3 -m scripts.validar_release data/migracion-v2
+gh release create whosthat-data-v2 data/migracion-v2/whosthat.db.gz.enc data/migracion-v2/version.json --repo atarom/IDsChangesetsByUser --title "Who's That? SQLite v2" --notes "Base migrada a fechas relativas; inicio + duración desde 2005-04-17" --latest=false
+```
+
+Una vez que `whosthat-data-v2` contenga los dos archivos correctos, publica el código de esta versión. El despliegue de GitHub Pages descargará el Release v2; la actualización diaria continuará únicamente sobre v2.
 
 ## Privacidad y atribución
 
