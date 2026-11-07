@@ -155,4 +155,136 @@
   by('namesLink').addEventListener('click', event => { event.preventDefault(); void requestAccess('names'); });
   by('dbExploreOpen').addEventListener('click', () => { void requestAccess('explore'); });
   by('dbDismiss').addEventListener('click', () => { requestedAction = null; closeGate(); });
+  function renderExplorerStatistics(container, manifest) {
+    const stats = manifest.statistics;
+    const integer = value => Number(value).toLocaleString('es-ES');
+    const decimal = value => Number(value).toLocaleString('es-ES', {maximumFractionDigits: 2});
+    const percentage = value => decimal(value * 100) + ' %';
+    const size = value => decimal(value / 1048576) + ' MiB';
+    const localDate = value => value ? value.slice(8, 10) + '/' + value.slice(5, 7) + '/' + value.slice(0, 4) : '—';
+    const updated = new Date(manifest.updatedAt);
+    const text = (tag, value, className) => {
+      const element = document.createElement(tag);
+      element.textContent = String(value);
+      if (className) element.className = className;
+      return element;
+    };
+    const section = title => {
+      const element = document.createElement('section');
+      element.className = 'hx-stats-section';
+      element.append(text('h3', title));
+      container.append(element);
+      return element;
+    };
+    const rows = items => {
+      const list = document.createElement('dl');
+      list.className = 'hx-stats-rows';
+      for (const [label, value] of items) {
+        list.append(text('dt', label), text('dd', value));
+      }
+      return list;
+    };
+    container.replaceChildren();
+    const overview = document.createElement('div');
+    overview.className = 'hx-stats-overview';
+    for (const [label, value] of [['Registros históricos', manifest.records], ['Usuarios con nombre', stats.users], ['Nombres distintos', stats.uniqueNames]]) {
+      const item = document.createElement('div');
+      item.append(text('strong', integer(value)), text('span', label));
+      overview.append(item);
+    }
+    container.append(overview);
+    const distribution = section('Distribución de nombres por usuario');
+    const chart = document.createElement('div');
+    chart.className = 'hx-stats-chart';
+    for (const [key, label] of [['1', '1 nombre'], ['2', '2 nombres'], ['3', '3 nombres'], ['4', '4 nombres'], ['5+', '5 o más']]) {
+      const count = stats.usersByNameCount[key];
+      const ratio = stats.users ? count / stats.users : 0;
+      const item = document.createElement('div');
+      item.className = 'hx-stats-bar-row';
+      const track = document.createElement('div');
+      track.className = 'hx-stats-track';
+      const bar = document.createElement('span');
+      bar.style.width = ratio * 100 + '%';
+      if (!count) bar.style.minWidth = '0';
+      track.append(bar);
+      item.append(text('span', label), track, text('span', integer(count) + ' · ' + percentage(ratio)));
+      chart.append(item);
+    }
+    distribution.append(chart);
+    const names = section('Nombres y observaciones');
+    names.append(rows([
+      ['Usuarios con varios nombres', integer(stats.users - stats.usersByNameCount['1']) + ' (' + percentage(stats.users ? (stats.users - stats.usersByNameCount['1']) / stats.users : 0) + ')'],
+      ['Nombres compartidos entre UID', integer(stats.sharedNames)],
+      ['Máximo de nombres por usuario', integer(stats.maxNamesPerUser)],
+      ['Media de nombres por usuario', decimal(stats.avgNamesPerUser)],
+      ['Primera observación', localDate(stats.firstObserved)],
+      ['Última observación', localDate(stats.lastObserved)],
+      ['Duración media observada por nombre', decimal(stats.avgObservedDays) + ' días'],
+    ]));
+    const technical = section('Publicación y almacenamiento');
+    technical.append(rows([
+      ['Última publicación', Number.isNaN(updated.getTime()) ? '—' : updated.toLocaleString('es-ES')],
+      ['Secuencia OSM procesada', integer(manifest.sequenceNumber)],
+      ['Tamaño SQLite', size(manifest.sqliteBytes)],
+      ['Tamaño cifrado', size(manifest.encryptedBytes)],
+      ['Reducción de tamaño', percentage(1 - manifest.encryptedBytes / manifest.sqliteBytes)],
+      ['Cifrado', 'SQLite + GZIP + AES-256-GCM'],
+      ['Fecha de referencia', localDate(manifest.dateEpoch)],
+      ['SHA-256', manifest.sha256],
+    ]));
+    container.append(text('p', 'Los nombres son observaciones históricas, no fechas exactas de cambio. Los nombres vacíos se excluyen de los recuentos por usuario.', 'hx-stats-note'));
+  }
+  function attachExplorerStatistics() {
+    const header = by('historyExplorer')?.querySelector('.hx-header');
+    if (!header) return;
+    const stylesheet = document.createElement('link');
+    stylesheet.rel = 'stylesheet';
+    stylesheet.href = new URL('./css/db-stats.css', document.baseURI).href;
+    document.head.append(stylesheet);
+    const panel = document.createElement('section');
+    panel.className = 'hx-stats';
+    const toggle = document.createElement('button');
+    toggle.type = 'button';
+    toggle.id = 'hxStatsToggle';
+    toggle.className = 'hx-stats-toggle';
+    toggle.textContent = 'Estadísticas de la base de datos';
+    toggle.setAttribute('aria-expanded', 'false');
+    toggle.setAttribute('aria-controls', 'hxStatsContent');
+    const content = document.createElement('div');
+    content.id = 'hxStatsContent';
+    content.className = 'hx-stats-content';
+    content.tabIndex = 0;
+    content.setAttribute('role', 'region');
+    content.setAttribute('aria-labelledby', 'hxStatsToggle');
+    content.hidden = true;
+    content.setAttribute('aria-live', 'polite');
+    panel.append(toggle, content);
+    header.after(panel);
+    let loaded = false;
+    let pending = false;
+    toggle.addEventListener('click', async () => {
+      const opening = content.hidden;
+      content.hidden = !opening;
+      toggle.setAttribute('aria-expanded', String(opening));
+      if (!opening || loaded || pending) return;
+      pending = true;
+      content.textContent = 'Cargando estadísticas publicadas…';
+      try {
+        const response = await fetch(new URL('./data/version.json', document.baseURI), {cache: 'no-store'});
+        if (!response.ok) throw Error('HTTP ' + response.status);
+        const manifest = await response.json();
+        if (!manifest.statistics) {
+          content.textContent = 'Las estadísticas aparecerán tras la próxima actualización de la base.';
+          return;
+        }
+        renderExplorerStatistics(content, manifest);
+        loaded = true;
+      } catch (error) {
+        content.textContent = 'No se pudieron cargar las estadísticas: ' + error.message + '. Cierra y vuelve a abrir este apartado para reintentarlo.';
+      } finally {
+        pending = false;
+      }
+    });
+  }
+  attachExplorerStatistics();
 })();

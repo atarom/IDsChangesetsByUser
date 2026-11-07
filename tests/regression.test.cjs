@@ -123,3 +123,66 @@ test('Integridad de UID incorrecta descarta la carga',{skip:!appSource},async()=
 test('Fecha y recuento incorrectos descartan la carga',{skip:!appSource},async()=>{for(const options of [{date:null},{count:null},{date:'falsa'},{count:'-1'}]){const h=appHarness([osm([changeset('101',options)])]);await h.load();assert.equal(h.ctx.order.length,0);assert.match(h.$('errorLog').value,/ALERTA DE INTEGRIDAD/);}});
 test('Resolver por nombre conserva el UID verificado',{skip:!appSource},async()=>{const h=appHarness([osm([changeset('101')])]);h.$('userUID').value='';h.$('userName').value='Jordi MF';await h.load();assert.equal(h.$('userUID').value,'8278438');assert.deepEqual(Array.from(h.ctx.order),['101']);});
 test('Un UID discordante en la ficha bloquea la consulta',{skip:!appSource},async()=>{const h=appHarness([osm([changeset('101')])],{userUid:'9'});await h.load();assert.equal(h.ctx.order.length,0);assert.match(h.$('errorLog').value,/Ficha del usuario/);});
+const statsUiSource=fs.readFileSync(path.join(root,'js/db-ui.js'),'utf8');
+class StatsElement {
+  constructor(tag='div') {this.tag=tag;this.children=[];this.handlers={};this.attrs={};this.className='';this.style={};this.hidden=false;this.textContent='';this.classList={add(){},remove(){},contains(){return false;}};}
+  append(...children) {this.children.push(...children);}
+  replaceChildren(...children) {this.children=[...children];this.textContent='';}
+  after(element) {this.next=element;}
+  addEventListener(type,handler) {this.handlers[type]=handler;}
+  setAttribute(key,value) {this.attrs[key]=value;}
+  querySelector(selector) {return selector==='.hx-header'?this.header:null;}
+}
+function statsUiHarness(manifest, fail=false) {
+  const ids=new Map();
+  const get=id=>{if(!ids.has(id))ids.set(id,new StatsElement());return ids.get(id);};
+  const header=new StatsElement();
+  get('historyExplorer').header=header;
+  const document={getElementById:get,createElement:tag=>new StatsElement(tag),head:new StatsElement(),body:new StatsElement(),baseURI:'https://example.test/IDsChangesetsByUser/'};
+  let calls=0;
+  const fetch=async(url,settings)=>{calls++;assert.equal(url.href,'https://example.test/IDsChangesetsByUser/data/version.json');assert.equal(settings.cache,'no-store');if(fail)throw Error('sin conexión');return {ok:true,json:async()=>manifest};};
+  const ctx={document,window:{HistoryExplorer:{open(){}},currentHistoryUid:()=>false},WhoDB:{onProgress(){},ready:true},URL,fetch,console,setTimeout,clearTimeout};
+  vm.runInNewContext(statsUiSource,ctx);
+  const panel=header.next;
+  const toggle=panel.children[0];
+  const content=panel.children[1];
+  return {panel,toggle,content,calls:()=>calls,stylesheet:document.head.children[0]};
+}
+const statsExample={format:'WTHDB01',dateEpoch:'2005-04-17',records:6,sequenceNumber:124066,encryptedBytes:600,sqliteBytes:1000,updatedAt:'2026-11-07T18:00:43+00:00',sha256:'a'.repeat(64),statistics:{users:3,uniqueNames:4,sharedNames:1,usersByNameCount:{'1':2,'2':1,'3':0,'4':0,'5+':0},maxNamesPerUser:2,avgNamesPerUser:1.33,firstObserved:'2005-04-17',lastObserved:'2026-11-07',avgObservedDays:330.1}};
+const statsText=element=>[element.textContent,...element.children.map(statsText)].join(' ');
+test('El panel estadístico es accesible con botón y carga solo al abrirse',async()=>{
+  const h=statsUiHarness(statsExample);
+  assert.equal(h.toggle.tag,'button');
+  assert.equal(h.toggle.attrs['aria-expanded'],'false');
+  assert.equal(h.content.hidden,true);
+  assert.equal(h.calls(),0);
+  assert.match(h.stylesheet.href,/db-stats.css$/);
+  await h.toggle.handlers.click();
+  assert.equal(h.content.hidden,false);
+  assert.equal(h.toggle.attrs['aria-expanded'],'true');
+  assert.equal(h.calls(),1);
+  assert.match(statsText(h.content),/Registros históricos/);
+  assert.match(statsText(h.content),/Nombres compartidos entre UID/);
+  assert.match(statsText(h.content),/2 nombres/);
+  assert.match(statsText(h.content),/SHA-256/);
+  await h.toggle.handlers.click();
+  assert.equal(h.content.hidden,true);
+  await h.toggle.handlers.click();
+  assert.equal(h.calls(),1);
+});
+test('Antes de la siguiente actualización se muestra un aviso, no datos inventados',async()=>{
+  const h=statsUiHarness({...statsExample,statistics:undefined});
+  await h.toggle.handlers.click();
+  assert.match(h.content.textContent,/próxima actualización/);
+  await h.toggle.handlers.click();
+  await h.toggle.handlers.click();
+  assert.equal(h.calls(),2);
+});
+test('Si falla la red, el apartado permite reintentar',async()=>{
+  const h=statsUiHarness(statsExample,true);
+  await h.toggle.handlers.click();
+  assert.match(h.content.textContent,/sin conexión/);
+  await h.toggle.handlers.click();
+  await h.toggle.handlers.click();
+  assert.equal(h.calls(),2);
+});

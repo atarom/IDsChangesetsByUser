@@ -18,6 +18,15 @@ class TestsRelease(unittest.TestCase):
         (self.folder / 'version.json').write_text(json.dumps(self.meta), encoding='utf-8')
     def test_acepta_release_actual(self):
         validar(self.folder)
+    def test_acepta_estadisticas_publicadas(self):
+        self.meta['statistics'] = {'users': 3, 'uniqueNames': 3, 'sharedNames': 1, 'usersByNameCount': {'1': 2, '2': 1, '3': 0, '4': 0, '5+': 0}, 'maxNamesPerUser': 2, 'avgNamesPerUser': 1.33, 'firstObserved': '2005-04-17', 'lastObserved': '2026-11-07', 'avgObservedDays': 330.1}
+        self.save()
+        validar(self.folder)
+    def test_rechaza_estadisticas_incoherentes(self):
+        self.meta['statistics'] = {'users': 3, 'uniqueNames': 3, 'sharedNames': 1, 'usersByNameCount': {'1': 4, '2': 1, '3': 0, '4': 0, '5+': 0}, 'maxNamesPerUser': 2, 'avgNamesPerUser': 1.33, 'firstObserved': '2005-04-17', 'lastObserved': '2026-11-07', 'avgObservedDays': 330.1}
+        self.save()
+        with self.assertRaisesRegex(ValueError,'Recuentos estadísticos incoherentes'):
+            validar(self.folder)
     def test_rechaza_fecha_base_incorrecta(self):
         self.meta['dateEpoch'] = '2005-04-18'
         self.save()

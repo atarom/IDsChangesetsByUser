@@ -1,5 +1,5 @@
 import argparse
-from datetime import datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 import getpass
 import gzip
 import hashlib
@@ -9,6 +9,7 @@ from pathlib import Path
 import shutil
 import sqlite3
 import tempfile
+import time
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
@@ -31,6 +32,22 @@ def inspect_header(enc_path):
     if len(header) != 36 or header[:8] != MAGIC:
         raise ValueError('Formato de base cifrada no reconocido')
     return header[8:24], header[24:36]
+def calculate_statistics(con):
+    users = con.execute("SELECT COUNT(*),COALESCE(SUM(n=1),0),COALESCE(SUM(n=2),0),COALESCE(SUM(n=3),0),COALESCE(SUM(n=4),0),COALESCE(SUM(n>=5),0),COALESCE(MAX(n),0),COALESCE(AVG(n),0) FROM (SELECT COUNT(*) n FROM whosthat WHERE user_name<>'' GROUP BY user_id)").fetchone()
+    names = con.execute("SELECT COUNT(*),COALESCE(SUM(n>1),0) FROM (SELECT COUNT(*) n FROM whosthat WHERE user_name<>'' GROUP BY user_name)").fetchone()
+    dates = con.execute("SELECT MIN(date_first),MAX(date_first+date_span),AVG(date_span) FROM whosthat WHERE user_name<>''").fetchone()
+    epoch = date.fromisoformat(EPOCH_TEXT)
+    return {
+        'users': users[0],
+        'uniqueNames': names[0],
+        'sharedNames': names[1],
+        'usersByNameCount': {'1': users[1], '2': users[2], '3': users[3], '4': users[4], '5+': users[5]},
+        'maxNamesPerUser': users[6],
+        'avgNamesPerUser': round(users[7], 2),
+        'firstObserved': (epoch + timedelta(days=dates[0])).isoformat() if dates[0] is not None else None,
+        'lastObserved': (epoch + timedelta(days=dates[1])).isoformat() if dates[1] is not None else None,
+        'avgObservedDays': round(dates[2], 1) if dates[2] is not None else None,
+    }
 def encrypt_database(db_path, enc_path, password, version_path=None):
     db_path = Path(db_path)
     enc_path = Path(enc_path)
@@ -42,6 +59,9 @@ def encrypt_database(db_path, enc_path, password, version_path=None):
         assert_data_ranges(con)
         seq = con.execute("SELECT value FROM metadata WHERE key='sequenceNumber'").fetchone()[0]
         count = con.execute('SELECT count(*) FROM whosthat').fetchone()[0]
+        started_stats = time.perf_counter()
+        statistics = calculate_statistics(con)
+        print(f'Estadísticas calculadas en {time.perf_counter() - started_stats:.2f} s', flush=True)
     finally:
         con.close()
     if enc_path.exists():
@@ -74,6 +94,7 @@ def encrypt_database(db_path, enc_path, password, version_path=None):
         'filename': enc_path.name,
         'sequenceNumber': int(seq),
         'records': int(count),
+        'statistics': statistics,
         'updatedAt': datetime.now(timezone.utc).isoformat(timespec='seconds'),
         'encryptedBytes': enc_path.stat().st_size,
         'sqliteBytes': db_path.stat().st_size,

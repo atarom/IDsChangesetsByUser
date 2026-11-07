@@ -13,6 +13,7 @@ import actualizar_whosthat_rapido as updater
 import actualizar_y_publicar as publisher
 from crypto_db import decrypt_database, encrypt_database
 from formato_fechas import EPOCH_TEXT, WHOSTHAT_DDL, to_days, to_text, validate_schema
+from validar_release import validar
 class TestsFlujo(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
@@ -37,11 +38,16 @@ class TestsFlujo(unittest.TestCase):
         diff = [(1,'Alba','2025-12-01','2026-01-05'),(2,'CASE','2026-01-02','2026-01-02'),(3,'Ñandú 🧭','2026-02-28','2026-03-01')]
         with patch.object(updater, 'remote_state', return_value=101), patch.object(updater, 'fetch_and_parse', return_value=(diff, 0.0, 0.0)):
             self.run_publisher()
+        validar(self.folder)
         data = json.loads(self.manifest.read_text())
         self.assertEqual(data['sequenceNumber'],101)
         self.assertEqual(data['records'],3)
-        self.assertEqual(set(data),{'format','dateEpoch','filename','sequenceNumber','records','updatedAt','encryptedBytes','sqliteBytes','sha256'})
+        self.assertEqual(set(data),{'format','dateEpoch','filename','sequenceNumber','records','statistics','updatedAt','encryptedBytes','sqliteBytes','sha256'})
         self.assertEqual(data['dateEpoch'],EPOCH_TEXT)
+        self.assertEqual(data['statistics']['users'],3)
+        self.assertEqual(data['statistics']['uniqueNames'],3)
+        self.assertEqual(data['statistics']['usersByNameCount'],{'1':3,'2':0,'3':0,'4':0,'5+':0})
+        self.assertEqual(data['statistics']['lastObserved'],'2026-03-01')
         self.assertEqual(data['sha256'],hashlib.sha256(self.enc.read_bytes()).hexdigest())
         restored=self.folder/'restaurado.sqlite'
         decrypt_database(self.enc,restored,self.password)
@@ -62,7 +68,21 @@ class TestsFlujo(unittest.TestCase):
         with sqlite3.connect(restored) as con:
             self.assertEqual(validate_schema(con),{'sequenceNumber':'100','dateEpoch':EPOCH_TEXT})
             self.assertEqual(con.execute('SELECT COUNT(*) FROM whosthat').fetchone()[0],2)
-        self.assertEqual(set(json.loads(self.manifest.read_text())),{'format','dateEpoch','filename','sequenceNumber','records','updatedAt','encryptedBytes','sqliteBytes','sha256'})
+        self.assertEqual(set(json.loads(self.manifest.read_text())),{'format','dateEpoch','filename','sequenceNumber','records','statistics','updatedAt','encryptedBytes','sqliteBytes','sha256'})
+    def test_estadisticas_excluyen_nombres_vacios_y_cuentan_compartidos(self):
+        with sqlite3.connect(self.raw) as con:
+            con.executemany('INSERT INTO whosthat VALUES (?,?,?,?)', [(3,'Alba',to_days('2026-02-01'),5),(3,'Otro',to_days('2026-02-02'),2),(4,'',to_days('2026-02-03'),0)])
+        from crypto_db import calculate_statistics
+        with sqlite3.connect(self.raw) as con:
+            stats = calculate_statistics(con)
+        self.assertEqual(stats['users'],3)
+        self.assertEqual(stats['uniqueNames'],3)
+        self.assertEqual(stats['sharedNames'],1)
+        self.assertEqual(stats['usersByNameCount'],{'1':2,'2':1,'3':0,'4':0,'5+':0})
+        self.assertEqual(stats['maxNamesPerUser'],2)
+        self.assertEqual(stats['avgNamesPerUser'],1.33)
+        self.assertEqual(stats['firstObserved'],'2026-01-01')
+        self.assertEqual(stats['lastObserved'],'2026-02-06')
     def test_error_diff_no_modifica_archivos_cifrados(self):
         before=(self.enc.read_bytes(),self.manifest.read_bytes())
         with patch.object(updater, 'remote_state', return_value=101), patch.object(updater, 'fetch_and_parse', side_effect=RuntimeError('fallo simulado')):
