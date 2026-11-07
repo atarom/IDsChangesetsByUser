@@ -35,8 +35,8 @@ jobs:
           cp index.html _site/
           cp css/*.css _site/css/
           cp js/*.js _site/js/
-          gh release download whosthat-data-v2 --pattern 'whosthat.db.gz.enc' --dir _site/data
-          gh release download whosthat-data-v2 --pattern 'version.json' --dir _site/data
+          gh release download whosthat-data --pattern 'whosthat.db.gz.enc' --dir _site/data
+          gh release download whosthat-data --pattern 'version.json' --dir _site/data
           python3 -m scripts.validar_release _site/data
       - uses: actions/configure-pages@v6
       - uses: actions/upload-pages-artifact@v5

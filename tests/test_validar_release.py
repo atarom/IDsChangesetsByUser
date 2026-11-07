@@ -4,7 +4,7 @@ import tempfile
 import unittest
 from pathlib import Path
 from scripts.validar_release import validar
-class TestsReleaseV2(unittest.TestCase):
+class TestsRelease(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.folder = Path(self.temp.name)
@@ -16,12 +16,12 @@ class TestsReleaseV2(unittest.TestCase):
         self.temp.cleanup()
     def save(self):
         (self.folder / 'version.json').write_text(json.dumps(self.meta), encoding='utf-8')
-    def test_acepta_release_v2(self):
+    def test_acepta_release_actual(self):
         validar(self.folder)
     def test_rechaza_formato_antiguo(self):
         self.meta['schemaVersion'] = 1
         self.save()
-        with self.assertRaisesRegex(ValueError, 'SQLite v2'):
+        with self.assertRaisesRegex(ValueError, 'fechas relativas'):
             validar(self.folder)
     def test_rechaza_archivo_cifrado_distinto(self):
         (self.folder / 'whosthat.db.gz.enc').write_bytes(self.payload + b'X')

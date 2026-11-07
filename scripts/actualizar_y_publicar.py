@@ -8,7 +8,7 @@ import time
 from crypto_db import decrypt_database, encrypt_database
 from actualizar_whosthat_rapido import run, SOURCE
 def main():
-    p = argparse.ArgumentParser(description='Actualizar base cifrada Who\'s That? SQLite v2')
+    p = argparse.ArgumentParser(description='Actualizar base cifrada Who\'s That?')
     p.add_argument('--encrypted', type=Path, default=Path(__file__).parent.parent / 'data' / 'whosthat.db.gz.enc')
     p.add_argument('--version', type=Path, default=Path(__file__).parent.parent / 'data' / 'version.json')
     p.add_argument('--max-files', type=int, default=None, help='Límite de diffs horarios; sin límite por defecto')
@@ -24,15 +24,15 @@ def main():
     timings = {}
     with tempfile.TemporaryDirectory(prefix='whosthat-update-') as td:
         sqlite_file = Path(td) / 'whosthat.sqlite'
-        print('Descifrando una copia temporal v2...', flush=True)
+        print('Descifrando una copia temporal...', flush=True)
         stage = time.perf_counter()
         decrypt_database(args.encrypted, sqlite_file, password)
         timings['Descifrado'] = time.perf_counter() - stage
-        print('Actualizando diffs horarios en formato v2...', flush=True)
+        print('Actualizando diffs horarios...', flush=True)
         stage = time.perf_counter()
         run(sqlite_file, args.source, args.max_files, False, args.workers)
         timings['Actualización de diffs'] = time.perf_counter() - stage
-        print('Validando, comprimiendo y cifrando SQLite v2...', flush=True)
+        print('Validando, comprimiendo y cifrando SQLite...', flush=True)
         stage = time.perf_counter()
         meta = encrypt_database(sqlite_file, args.encrypted, password, version_path=args.version)
         timings['Validación, compresión y cifrado'] = time.perf_counter() - stage

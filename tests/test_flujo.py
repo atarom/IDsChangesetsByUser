@@ -12,7 +12,7 @@ import actualizar_whosthat_rapido as updater
 import actualizar_y_publicar as publisher
 from crypto_db import decrypt_database, encrypt_database
 from formato_fechas import EPOCH_TEXT, WHOSTHAT_DDL, to_days, to_text, validate_schema
-class TestsFlujoV2(unittest.TestCase):
+class TestsFlujo(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.folder = Path(self.temp.name)

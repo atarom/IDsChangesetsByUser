@@ -27,10 +27,10 @@ def validate_schema(con, integrity=False):
     if any(typ not in ('table', 'index') for typ, _, _ in objects):
         raise ValueError('Objetos SQLite inesperados')
     if any(typ == 'index' for typ, _, _ in objects):
-        raise ValueError('El formato exclusivo v2 no admite índices secundarios')
+        raise ValueError('El formato de fechas relativas no admite índices secundarios')
     columns = [(r[1], r[2].upper(), r[3], r[5]) for r in con.execute('PRAGMA table_info(whosthat)')]
     if columns != [('user_id', 'INTEGER', 1, 1), ('user_name', 'TEXT', 1, 2), ('date_first', 'INTEGER', 1, 0), ('date_span', 'INTEGER', 1, 0)]:
-        raise ValueError('La base no usa el formato exclusivo de fechas relativas v2')
+        raise ValueError('La base no usa el formato de fechas relativas requerido')
     ddl = next(sql for typ, name, sql in objects if typ == 'table' and name == 'whosthat')
     if 'WITHOUT ROWID' not in ddl.upper():
         raise ValueError('La tabla whosthat debe ser WITHOUT ROWID')

@@ -23,13 +23,13 @@ El botón **«⌕ Explorar»** junto a «Nombres conocidos» permite desbloquear
 
 La primera y la última observación de cada nombre no son fechas exactas de renombrado. El ranking cuenta nombres distintos registrados por UID; no representa necesariamente todos sus cambios reales de nombre. Las búsquedas regex extensas pueden tardar más porque deben examinar los nombres de la base.
 
-### Almacenamiento SQLite v2
+### Almacenamiento SQLite
 
-La tabla `whosthat` guarda `user_id`, `user_name`, `date_first` y `date_span`. `date_first` es el número entero de días desde `2005-04-17` y `date_span` es la duración en días hasta la última observación. `metadata` guarda `sequenceNumber`, `schemaVersion=2` y `dateEpoch=2005-04-17`. La tabla utiliza `WITHOUT ROWID`, con clave primaria `(user_id,user_name)`, y no requiere índices adicionales. Solo se admite el formato v2.
+La tabla `whosthat` guarda `user_id`, `user_name`, `date_first` y `date_span`. `date_first` es el número entero de días desde `2005-04-17` y `date_span` es la duración en días hasta la última observación. `metadata` guarda `sequenceNumber`, `schemaVersion=2` y `dateEpoch=2005-04-17`. La tabla utiliza `WITHOUT ROWID`, con clave primaria `(user_id,user_name)`, y no requiere índices adicionales. Solo se admite el formato de fechas relativas.
 
-### Actualización diaria de SQLite v2
+### Actualización diaria de SQLite
 
-El historial se mantiene exclusivamente en el Release `whosthat-data-v2`, que contiene `whosthat.db.gz.enc` y `version.json`. GitHub Actions descarga los dos archivos, verifica su SHA-256, descifra la base, procesa las réplicas horarias de OSM pendientes y cifra de nuevo el SQLite v2. Antes de publicar, valida el esquema, la fecha base y los intervalos de observación.
+El historial se mantiene exclusivamente en el Release `whosthat-data`, que contiene `whosthat.db.gz.enc` y `version.json`. GitHub Actions descarga los dos archivos, verifica su SHA-256, descifra la base, procesa las réplicas horarias de OSM pendientes y vuelve a cifrar la base SQLite. Antes de publicar, valida el esquema, la fecha base y los intervalos de observación.
 
 La actualización se puede iniciar manualmente desde GitHub Actions o mediante:
 

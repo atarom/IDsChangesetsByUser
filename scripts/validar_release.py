@@ -12,7 +12,7 @@ def validar(folder):
         raise ValueError('Faltan version.json o whosthat.db.gz.enc')
     data = json.loads(manifest.read_text(encoding='utf-8'))
     if data.get('format') != 'WTHDB01' or data.get('filename') != encrypted.name or data.get('schemaVersion') != 2 or data.get('dateEpoch') != '2005-04-17':
-        raise ValueError('El manifiesto no corresponde exclusivamente al esquema SQLite v2')
+        raise ValueError('El manifiesto no corresponde al formato de fechas relativas requerido')
     for key in ('sequenceNumber', 'records', 'encryptedBytes', 'sqliteBytes'):
         value = data.get(key)
         if type(value) is not int or value <= 0:
@@ -30,9 +30,9 @@ def validar(folder):
             digest.update(chunk)
     if digest.hexdigest() != data['sha256']:
         raise ValueError('SHA-256 del archivo no coincide con version.json')
-    print(f"Release SQLite v2 válido: {data['records']:,} registros, secuencia {data['sequenceNumber']}, {data['encryptedBytes'] / 1048576:.2f} MiB cifrados.")
+    print(f"Release de SQLite válido: {data['records']:,} registros, secuencia {data['sequenceNumber']}, {data['encryptedBytes'] / 1048576:.2f} MiB cifrados.")
 def main():
-    parser = argparse.ArgumentParser(description='Validar par de archivos cifrados SQLite v2 sin descifrar')
+    parser = argparse.ArgumentParser(description='Validar los archivos cifrados y su manifiesto sin descifrar')
     parser.add_argument('carpeta', type=Path)
     args = parser.parse_args()
     validar(args.carpeta)

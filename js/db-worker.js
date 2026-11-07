@@ -71,7 +71,7 @@ async function pruneOldPayloads(activeKey) {
   });
 }
 function checkManifest(data) {
-  if (!data || data.format !== 'WTHDB01' || data.schemaVersion !== 2 || data.dateEpoch !== '2005-04-17' || !/^[a-f0-9]{64}$/.test(data.sha256) || !Number.isSafeInteger(data.sequenceNumber) || !Number.isSafeInteger(data.records) || !Number.isSafeInteger(data.sqliteBytes) || !Number.isSafeInteger(data.encryptedBytes)) throw Error('La base publicada no utiliza el formato exclusivo de fechas relativas v2.');
+  if (!data || data.format !== 'WTHDB01' || data.schemaVersion !== 2 || data.dateEpoch !== '2005-04-17' || !/^[a-f0-9]{64}$/.test(data.sha256) || !Number.isSafeInteger(data.sequenceNumber) || !Number.isSafeInteger(data.records) || !Number.isSafeInteger(data.sqliteBytes) || !Number.isSafeInteger(data.encryptedBytes)) throw Error('La base publicada no utiliza el formato exclusivo de fechas relativas requerido.');
   return data;
 }
 async function fetchManifest() {
@@ -84,9 +84,9 @@ async function fetchManifest() {
     try { await putItem('manifest', data); } catch (error) { progress('Aviso: no se pudo guardar el manifiesto.'); }
   } catch (error) {
     data = await readItem('manifest');
-    if (!data) throw Error(`No se pudo leer una versión v2 válida: ${error.message}`);
+    if (!data) throw Error(`No se pudo leer un manifiesto válido: ${error.message}`);
     checkManifest(data);
-    progress('Sin conexión: usando la última versión v2 guardada en este navegador.');
+    progress('Sin conexión: usando la última versión guardada en este navegador.');
   }
   version = data;
   return data;
@@ -168,7 +168,7 @@ async function unlock(password, remember, savedKey = null) {
   const stream = new Blob([compressed]).stream().pipeThrough(new DecompressionStream('gzip'));
   compressed = null;
   let sqliteArray = await new Response(stream).arrayBuffer();
-  progress('Abriendo SQLite y verificando el formato v2…');
+  progress('Abriendo SQLite y verificando el formato…');
   const SQL = await importSQL();
   const freshDB = new SQL.Database(new Uint8Array(sqliteArray));
   sqliteArray = null;
@@ -178,7 +178,7 @@ async function unlock(password, remember, savedKey = null) {
     const columns = freshDB.exec('PRAGMA table_info(whosthat)')[0]?.values || [];
     const expected = ['user_id', 'user_name', 'date_first', 'date_span'];
     const types = ['INTEGER', 'TEXT', 'INTEGER', 'INTEGER'];
-    if (meta.get('schemaVersion') !== '2' || meta.get('dateEpoch') !== '2005-04-17' || Number(meta.get('sequenceNumber')) !== version.sequenceNumber || columns.length !== 4 || columns.some((col, i) => col[1] !== expected[i] || String(col[2]).toUpperCase() !== types[i] || (i < 2 && col[5] !== i + 1)) || Number(freshDB.exec('SELECT COUNT(*) FROM whosthat')[0]?.values[0][0]) !== version.records) throw Error('Base SQLite incompatible: se exige exclusivamente el formato de fechas relativas v2.');
+    if (meta.get('schemaVersion') !== '2' || meta.get('dateEpoch') !== '2005-04-17' || Number(meta.get('sequenceNumber')) !== version.sequenceNumber || columns.length !== 4 || columns.some((col, i) => col[1] !== expected[i] || String(col[2]).toUpperCase() !== types[i] || (i < 2 && col[5] !== i + 1)) || Number(freshDB.exec('SELECT COUNT(*) FROM whosthat')[0]?.values[0][0]) !== version.records) throw Error('Base SQLite incompatible: se exige el formato de fechas relativas.');
   } catch (error) {
     freshDB.close();
     throw error;

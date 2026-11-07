@@ -3,9 +3,7 @@
 *.sqlite-shm
 *.db
 *.db-journal
-/data/*.enc
-/data/version.json
-/data/migracion-v2/
+/data/
 .env
 .env.*
 *.key

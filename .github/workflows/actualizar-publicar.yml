@@ -43,7 +43,7 @@ jobs:
         shell: bash
         run: |
           test -n "$WHOSTHAT_DB_PASSWORD" || { echo 'Configura WHOSTHAT_DB_PASSWORD en Secrets.'; exit 1; }
-          gh release view whosthat-data-v2 >/dev/null || { echo 'Falta el Release whosthat-data-v2 con la base SQLite v2.'; exit 1; }
+          gh release view whosthat-data >/dev/null || { echo 'Falta el Release whosthat-data con la base de fechas relativas.'; exit 1; }
       - name: Preparar biblioteca Python
         run: python -m pip install -r requirements.txt
       - name: Validar cifrado y descifrado SQLite
@@ -72,11 +72,11 @@ jobs:
                   assert db.execute('SELECT user_name,date_span FROM whosthat WHERE user_id=1').fetchone() == ('Ñandú 🧭', 0)
           PY
       - name: Recuperar base cifrada persistente desde Releases
-        run: gh release download whosthat-data-v2 --pattern 'whosthat.db.gz.enc' --dir data
-      - name: Verificar Release migrado a SQLite v2
+        run: gh release download whosthat-data --pattern 'whosthat.db.gz.enc' --dir data
+      - name: Verificar integridad de la base cifrada publicada
         shell: bash
         run: |
-          gh release download whosthat-data-v2 --pattern 'version.json' --dir data --clobber
+          gh release download whosthat-data --pattern 'version.json' --dir data --clobber
           python -m scripts.validar_release data
       - name: Comprobar copia semanal
         id: copia
@@ -85,7 +85,7 @@ jobs:
           if [ "$(date -u +%u)" = "7" ] || [ "${{ inputs.copia_ahora }}" = "true" ]; then
             echo "guardar=true" >> "$GITHUB_OUTPUT"
             echo "fecha=$(date -u +%Y-%m-%d)" >> "$GITHUB_OUTPUT"
-            gh release download whosthat-data-v2 --pattern 'version.json' --dir data --clobber
+            gh release download whosthat-data --pattern 'version.json' --dir data --clobber
           fi
       - name: Guardar copia semanal cifrada (30 días)
         if: steps.copia.outputs.guardar == 'true'
@@ -113,7 +113,7 @@ jobs:
         shell: bash
         run: |
           inicio=$SECONDS
-          gh release upload whosthat-data-v2 data/whosthat.db.gz.enc data/version.json --clobber
+          gh release upload whosthat-data data/whosthat.db.gz.enc data/version.json --clobber
           echo "TIEMPO PUBLICACIÓN RELEASE: $((SECONDS - inicio)) s"
       - name: Preparar sitio estático (sin scripts de gestión ni ficheros privados)
         shell: bash
