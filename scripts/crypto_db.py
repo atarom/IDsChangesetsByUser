@@ -31,7 +31,7 @@ def inspect_header(enc_path):
     if len(header) != 36 or header[:8] != MAGIC:
         raise ValueError('Formato de base cifrada no reconocido')
     return header[8:24], header[24:36]
-def encrypt_database(db_path, enc_path, password, preserve_salt_from=None, version_path=None):
+def encrypt_database(db_path, enc_path, password, version_path=None):
     db_path = Path(db_path)
     enc_path = Path(enc_path)
     if not db_path.is_file():
@@ -44,9 +44,7 @@ def encrypt_database(db_path, enc_path, password, preserve_salt_from=None, versi
         count = con.execute('SELECT count(*) FROM whosthat').fetchone()[0]
     finally:
         con.close()
-    if preserve_salt_from:
-        salt, _old_iv = inspect_header(preserve_salt_from)
-    elif enc_path.exists():
+    if enc_path.exists():
         salt, _old_iv = inspect_header(enc_path)
     else:
         salt = os.urandom(SALT_BYTES)
@@ -131,12 +129,12 @@ def decrypt_database(enc_path, output_path, password):
 def main():
     p = argparse.ArgumentParser(description='Cifra/descifra bases Who\'s That?')
     sp = p.add_subparsers(dest='cmd', required=True)
-    en = sp.add_parser('encrypt'); en.add_argument('sqlite'); en.add_argument('encrypted'); en.add_argument('--version'); en.add_argument('--previous')
+    en = sp.add_parser('encrypt'); en.add_argument('sqlite'); en.add_argument('encrypted'); en.add_argument('--version')
     de = sp.add_parser('decrypt'); de.add_argument('encrypted'); de.add_argument('sqlite')
     args = p.parse_args()
     password = os.environ.get('WHOSTHAT_DB_PASSWORD') or getpass.getpass('Contraseña de la base: ')
     if args.cmd == 'encrypt':
-        print(encrypt_database(args.sqlite, args.encrypted, password, args.previous, args.version))
+        print(encrypt_database(args.sqlite, args.encrypted, password, version_path=args.version))
     else:
         decrypt_database(args.encrypted, args.sqlite, password)
         print('Base descifrada correctamente:', args.sqlite)

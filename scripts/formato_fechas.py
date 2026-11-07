@@ -1,5 +1,4 @@
 from datetime import date
-import sqlite3
 EPOCH_TEXT = '2005-04-17'
 EPOCH = date.fromisoformat(EPOCH_TEXT)
 SCHEMA_VERSION = '2'
@@ -15,8 +14,6 @@ def to_text(offset):
     if type(offset) is not int:
         raise ValueError('El desplazamiento debe ser INTEGER')
     return (EPOCH.fromordinal(EPOCH.toordinal() + offset)).isoformat()
-def connect_readonly(path):
-    return sqlite3.connect(f'file:{path.resolve()}?mode=ro', uri=True)
 def validate_schema(con, integrity=False):
     if integrity and con.execute('PRAGMA integrity_check').fetchone() != ('ok',):
         raise ValueError('Fallo de integridad SQLite')

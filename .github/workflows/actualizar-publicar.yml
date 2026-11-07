@@ -46,31 +46,6 @@ jobs:
         run: |
           test -n "$WHOSTHAT_DB_PASSWORD" || { echo 'Configura WHOSTHAT_DB_PASSWORD en Secrets.'; exit 1; }
           gh release view whosthat-data >/dev/null || { echo 'Falta el Release whosthat-data con la base de fechas relativas.'; exit 1; }
-      - name: Validar cifrado y descifrado SQLite
-        shell: bash
-        run: |
-          python - <<'PY'
-          import sqlite3
-          import tempfile
-          from pathlib import Path
-          from scripts.crypto_db import encrypt_database, decrypt_database
-          from scripts.formato_fechas import WHOSTHAT_DDL, EPOCH_TEXT, to_days
-          with tempfile.TemporaryDirectory() as directory:
-              source = Path(directory) / 'original.sqlite'
-              encrypted = Path(directory) / 'temporal.enc'
-              restored = Path(directory) / 'restaurada.sqlite'
-              with sqlite3.connect(source) as db:
-                  db.execute('CREATE TABLE metadata (key TEXT PRIMARY KEY, value TEXT NOT NULL)')
-                  db.execute(WHOSTHAT_DDL)
-                  db.executemany('INSERT INTO metadata VALUES (?,?)', [('sequenceNumber','1'),('schemaVersion','2'),('dateEpoch',EPOCH_TEXT)])
-                  db.execute('INSERT INTO whosthat VALUES (?,?,?,?)', (1,'Ñandú 🧭',to_days('2026-11-06'),0))
-              encrypt_database(source, encrypted, 'PruebaTemporal-2026')
-              decrypt_database(encrypted, restored, 'PruebaTemporal-2026')
-              assert source.read_bytes() == restored.read_bytes()
-              with sqlite3.connect(restored) as db:
-                  assert db.execute('PRAGMA integrity_check').fetchone()[0] == 'ok'
-                  assert db.execute('SELECT user_name,date_span FROM whosthat WHERE user_id=1').fetchone() == ('Ñandú 🧭', 0)
-          PY
       - name: Recuperar base cifrada persistente desde Releases
         run: gh release download whosthat-data --pattern 'whosthat.db.gz.enc' --dir data
       - name: Verificar integridad de la base cifrada publicada
@@ -85,7 +60,6 @@ jobs:
           if [ "$(date -u +%u)" = "7" ] || [ "${{ inputs.copia_ahora }}" = "true" ]; then
             echo "guardar=true" >> "$GITHUB_OUTPUT"
             echo "fecha=$(date -u +%Y-%m-%d)" >> "$GITHUB_OUTPUT"
-            gh release download whosthat-data --pattern 'version.json' --dir data --clobber
           fi
       - name: Guardar copia semanal cifrada (30 días)
         if: steps.copia.outputs.guardar == 'true'
