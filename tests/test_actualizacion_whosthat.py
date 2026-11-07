@@ -15,7 +15,7 @@ class TestsActualizacion(unittest.TestCase):
         self.con = sqlite3.connect(':memory:', isolation_level=None)
         self.con.execute(WHOSTHAT_DDL)
         self.con.execute('CREATE TABLE metadata (key TEXT PRIMARY KEY,value TEXT NOT NULL)')
-        self.con.executemany('INSERT INTO metadata VALUES (?,?)', [('sequenceNumber','100'),('schemaVersion','2'),('dateEpoch',EPOCH_TEXT)])
+        self.con.executemany('INSERT INTO metadata VALUES (?,?)', [('sequenceNumber','100'),('dateEpoch',EPOCH_TEXT)])
         self.initial = [(1, '  doble  nombre  ', '2026-01-03', '2026-01-10'), (2, 'CASE', '2026-01-03', '2026-01-10'), (3, 'case', '2026-01-03', '2026-01-10'), (4, 'emoji🧭', '2026-01-03', '2026-01-10'), (5, 'stationary', '2026-01-02', '2026-01-10')]
         self.con.executemany('INSERT INTO whosthat VALUES (?,?,?,?)', ((uid,name,to_days(first),to_days(last)-to_days(first)) for uid,name,first,last in self.initial))
         self.rows = [(1, '  doble  nombre  ', '2026-01-03', '2026-01-10'), (2, 'CASE', '2026-01-02', '2026-01-10'), (3, 'case', '2026-01-03', '2026-01-11'), (4, 'emoji🧭', '2026-01-01', '2026-01-12'), (5, 'stationary', '2026-01-04', '2026-01-07'), (6, 'nuevo', '2026-01-08', '2026-01-08'), (7, '  otro  ', '2026-01-09', '2026-01-09'), (8, 'Ñandú', '2026-01-06', '2026-01-06')]
@@ -57,9 +57,9 @@ class TestsActualizacion(unittest.TestCase):
         self.assertEqual(to_text(to_days('2024-02-29')),'2024-02-29')
         with self.assertRaises(ValueError):
             to_days('2026-02-30')
-    def test_rechaza_v1(self):
-        self.con.execute("UPDATE metadata SET value='1' WHERE key='schemaVersion'")
-        with self.assertRaisesRegex(ValueError,'Versión'):
+    def test_rechaza_fecha_base_incorrecta(self):
+        self.con.execute("UPDATE metadata SET value='2005-04-18' WHERE key='dateEpoch'")
+        with self.assertRaisesRegex(ValueError,'Metadatos'):
             updater.apply_diff(self.con,101,self.rows)
     def test_extrae_nombres_unicode(self):
         payload='<osmChange><modify><node id="1" uid="9" user="Ñandú 🧭" timestamp="2026-01-03T12:00:00Z"/><way id="2" uid="9" user="Ñandú 🧭" timestamp="2026-01-04T12:00:00Z"/></modify></osmChange>'
@@ -73,7 +73,7 @@ class TestsActualizacion(unittest.TestCase):
     def test_metadata_se_conserva(self):
         updater.apply_diff(self.con,101,self.rows)
         self.assertEqual(validate_schema(self.con)['dateEpoch'],EPOCH_TEXT)
-        self.assertEqual(validate_schema(self.con)['schemaVersion'],'2')
+        self.assertEqual(set(validate_schema(self.con)),{'sequenceNumber','dateEpoch'})
     def test_inicio_retroactivo_actualiza_duracion(self):
         updater.apply_diff(self.con,101,[(1,'  doble  nombre  ','2025-12-01','2026-01-04')])
         self.assertIn((1,'  doble  nombre  ','2025-12-01','2026-01-10'),self.snapshot()[0])

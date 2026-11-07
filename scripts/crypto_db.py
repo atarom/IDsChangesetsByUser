@@ -13,9 +13,9 @@ from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 try:
-    from .formato_fechas import EPOCH_TEXT, SCHEMA_VERSION, assert_data_ranges, validate_schema
+    from .formato_fechas import EPOCH_TEXT, assert_data_ranges, validate_schema
 except ImportError:
-    from formato_fechas import EPOCH_TEXT, SCHEMA_VERSION, assert_data_ranges, validate_schema
+    from formato_fechas import EPOCH_TEXT, assert_data_ranges, validate_schema
 MAGIC = b'WTHDB01\x00'
 SALT_BYTES = 16
 IV_BYTES = 12
@@ -70,7 +70,6 @@ def encrypt_database(db_path, enc_path, password, version_path=None):
     digest = _sha256(enc_path)
     meta = {
         'format': 'WTHDB01',
-        'schemaVersion': int(SCHEMA_VERSION),
         'dateEpoch': EPOCH_TEXT,
         'filename': enc_path.name,
         'sequenceNumber': int(seq),

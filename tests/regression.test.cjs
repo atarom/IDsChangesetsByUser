@@ -11,7 +11,7 @@ const offset = value => Math.round((Date.parse(value + 'T00:00:00Z') - Date.UTC(
 function workerHarness(rows = []) {
   const db = new DatabaseSync(':memory:');
   db.exec('CREATE TABLE metadata(key TEXT PRIMARY KEY,value TEXT NOT NULL)');
-  db.exec("INSERT INTO metadata VALUES ('sequenceNumber','1'),('schemaVersion','2'),('dateEpoch','2005-04-17')");
+  db.exec("INSERT INTO metadata VALUES ('sequenceNumber','1'),('dateEpoch','2005-04-17')");
   db.exec('CREATE TABLE whosthat(user_id INTEGER NOT NULL,user_name TEXT NOT NULL,date_first INTEGER NOT NULL,date_span INTEGER NOT NULL,PRIMARY KEY(user_id,user_name)) WITHOUT ROWID');
   const insert = db.prepare('INSERT INTO whosthat VALUES(?,?,?,?)');
   for (const [uid,name,first,last] of rows) insert.run(uid,name,offset(first),offset(last)-offset(first));
@@ -47,8 +47,8 @@ test('Ranking con mínimo mayor no inventa resultados',()=>{const h=workerHarnes
 test('El UID incorrecto es rechazado',()=>{const h=workerHarness(BASE);assert.throws(()=>h.explore({mode:'user',uid:0}),/UID incorrecto/);h.db.close();});
 test('El rango de fechas invertido es rechazado',()=>{const h=workerHarness(BASE);assert.throws(()=>h.explore({mode:'dates',dateMode:'first',from:'2026-04-01',to:'2026-01-01'}),/posterior/);h.db.close();});
 test('Un patrón regex incorrecto es rechazado',()=>{const h=workerHarness(BASE);assert.throws(()=>h.explore({mode:'names',match:'regex',name:'['}),/Regex no válida/);h.db.close();});
-test('La base antigua se rechaza en el manifiesto',()=>{const h=workerHarness(BASE);h.ctx.manifest={format:'WTHDB01',schemaVersion:1,dateEpoch:'2005-04-17',sha256:'a'.repeat(64),sequenceNumber:1,records:6,sqliteBytes:10,encryptedBytes:20};assert.throws(()=>h.evalJs('checkManifest(manifest)'),/formato exclusivo/);h.db.close();});
-test('El manifiesto del formato actual se acepta',()=>{const h=workerHarness(BASE);h.ctx.manifest={format:'WTHDB01',schemaVersion:2,dateEpoch:'2005-04-17',sha256:'a'.repeat(64),sequenceNumber:1,records:6,sqliteBytes:10,encryptedBytes:20};assert.equal(h.evalJs('checkManifest(manifest).schemaVersion'),2);h.db.close();});
+test('El manifiesto con época de fechas incorrecta se rechaza',()=>{const h=workerHarness(BASE);h.ctx.manifest={format:'WTHDB01',dateEpoch:'2005-04-18',sha256:'a'.repeat(64),sequenceNumber:1,records:6,sqliteBytes:10,encryptedBytes:20};assert.throws(()=>h.evalJs('checkManifest(manifest)'),/formato exclusivo/);h.db.close();});
+test('El manifiesto del formato actual se acepta',()=>{const h=workerHarness(BASE);h.ctx.manifest={format:'WTHDB01',dateEpoch:'2005-04-17',sha256:'a'.repeat(64),sequenceNumber:1,records:6,sqliteBytes:10,encryptedBytes:20};assert.equal(h.evalJs('checkManifest(manifest).dateEpoch'),'2005-04-17');h.db.close();});
 test('Lookup devuelve fechas de la nueva estructura',async()=>{const h=workerHarness(BASE);assert.equal((await h.action({action:'lookup',uid:2}))[0].first,'2024-02-29');h.db.close();});
 test('Lookup rechaza UID inválido',async()=>{const h=workerHarness(BASE);await assert.rejects(h.action({action:'lookup',uid:-1}),/UID incorrecto/);h.db.close();});
 test('Acciones desconocidas son rechazadas',async()=>{const h=workerHarness(BASE);await assert.rejects(h.action({action:'unknown'}),/Acción desconocida/);h.db.close();});

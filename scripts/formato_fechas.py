@@ -1,7 +1,6 @@
 from datetime import date
 EPOCH_TEXT = '2005-04-17'
 EPOCH = date.fromisoformat(EPOCH_TEXT)
-SCHEMA_VERSION = '2'
 WHOSTHAT_DDL = 'CREATE TABLE whosthat(user_id INTEGER NOT NULL,user_name TEXT NOT NULL,date_first INTEGER NOT NULL,date_span INTEGER NOT NULL CHECK(date_span >= 0),PRIMARY KEY(user_id,user_name)) WITHOUT ROWID'
 def to_days(value):
     if not isinstance(value, str) or len(value) != 10 or value[4] != '-' or value[7] != '-':
@@ -35,8 +34,8 @@ def validate_schema(con, integrity=False):
     if md_columns != [('key', 'TEXT', 0, 1), ('value', 'TEXT', 1, 0)]:
         raise ValueError('Esquema metadata no válido')
     meta = dict(con.execute('SELECT key,value FROM metadata'))
-    if meta.get('schemaVersion') != SCHEMA_VERSION or meta.get('dateEpoch') != EPOCH_TEXT:
-        raise ValueError('Versión o fecha base incorrectas: se exige schemaVersion=2 y dateEpoch=2005-04-17')
+    if set(meta) != {'sequenceNumber', 'dateEpoch'} or meta.get('dateEpoch') != EPOCH_TEXT:
+        raise ValueError('Metadatos SQLite incorrectos: se exigen sequenceNumber y dateEpoch=2005-04-17')
     if not str(meta.get('sequenceNumber', '')).isdigit():
         raise ValueError('sequenceNumber incorrecto')
     return meta

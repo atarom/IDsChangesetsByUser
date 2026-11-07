@@ -71,7 +71,7 @@ async function pruneOldPayloads(activeKey) {
   });
 }
 function checkManifest(data) {
-  if (!data || data.format !== 'WTHDB01' || data.schemaVersion !== 2 || data.dateEpoch !== '2005-04-17' || !/^[a-f0-9]{64}$/.test(data.sha256) || !Number.isSafeInteger(data.sequenceNumber) || !Number.isSafeInteger(data.records) || !Number.isSafeInteger(data.sqliteBytes) || !Number.isSafeInteger(data.encryptedBytes)) throw Error('La base publicada no utiliza el formato exclusivo de fechas relativas requerido.');
+  if (!data || data.format !== 'WTHDB01' || data.dateEpoch !== '2005-04-17' || !/^[a-f0-9]{64}$/.test(data.sha256) || !Number.isSafeInteger(data.sequenceNumber) || !Number.isSafeInteger(data.records) || !Number.isSafeInteger(data.sqliteBytes) || !Number.isSafeInteger(data.encryptedBytes)) throw Error('La base publicada no utiliza el formato exclusivo de fechas relativas requerido.');
   return data;
 }
 async function fetchManifest() {
@@ -178,7 +178,7 @@ async function unlock(password, remember, savedKey = null) {
     const columns = freshDB.exec('PRAGMA table_info(whosthat)')[0]?.values || [];
     const expected = ['user_id', 'user_name', 'date_first', 'date_span'];
     const types = ['INTEGER', 'TEXT', 'INTEGER', 'INTEGER'];
-    if (meta.get('schemaVersion') !== '2' || meta.get('dateEpoch') !== '2005-04-17' || Number(meta.get('sequenceNumber')) !== version.sequenceNumber || columns.length !== 4 || columns.some((col, i) => col[1] !== expected[i] || String(col[2]).toUpperCase() !== types[i] || (i < 2 && col[5] !== i + 1)) || Number(freshDB.exec('SELECT COUNT(*) FROM whosthat')[0]?.values[0][0]) !== version.records) throw Error('Base SQLite incompatible: se exige el formato de fechas relativas.');
+    if (meta.get('dateEpoch') !== '2005-04-17' || Number(meta.get('sequenceNumber')) !== version.sequenceNumber || columns.length !== 4 || columns.some((col, i) => col[1] !== expected[i] || String(col[2]).toUpperCase() !== types[i] || (i < 2 && col[5] !== i + 1)) || Number(freshDB.exec('SELECT COUNT(*) FROM whosthat')[0]?.values[0][0]) !== version.records) throw Error('Base SQLite incompatible: se exige el formato de fechas relativas.');
   } catch (error) {
     freshDB.close();
     throw error;

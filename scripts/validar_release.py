@@ -11,7 +11,7 @@ def validar(folder):
     if not manifest.is_file() or not encrypted.is_file():
         raise ValueError('Faltan version.json o whosthat.db.gz.enc')
     data = json.loads(manifest.read_text(encoding='utf-8'))
-    if data.get('format') != 'WTHDB01' or data.get('filename') != encrypted.name or data.get('schemaVersion') != 2 or data.get('dateEpoch') != '2005-04-17':
+    if data.get('format') != 'WTHDB01' or data.get('filename') != encrypted.name or data.get('dateEpoch') != '2005-04-17':
         raise ValueError('El manifiesto no corresponde al formato de fechas relativas requerido')
     for key in ('sequenceNumber', 'records', 'encryptedBytes', 'sqliteBytes'):
         value = data.get(key)

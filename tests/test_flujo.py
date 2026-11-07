@@ -1,6 +1,7 @@
 import hashlib
 import json
 import os
+import shutil
 from pathlib import Path
 import sqlite3
 import sys
@@ -23,7 +24,7 @@ class TestsFlujo(unittest.TestCase):
         with sqlite3.connect(self.raw) as con:
             con.execute(WHOSTHAT_DDL)
             con.execute('CREATE TABLE metadata(key TEXT PRIMARY KEY,value TEXT NOT NULL)')
-            con.executemany('INSERT INTO metadata VALUES (?,?)', [('sequenceNumber','100'),('schemaVersion','2'),('dateEpoch',EPOCH_TEXT)])
+            con.executemany('INSERT INTO metadata VALUES (?,?)', [('sequenceNumber','100'),('dateEpoch',EPOCH_TEXT)])
             con.executemany('INSERT INTO whosthat VALUES (?,?,?,?)', [(1,'Alba',to_days('2026-01-01'),1),(2,'CASE',to_days('2026-01-02'),0)])
         encrypt_database(self.raw, self.enc, self.password, version_path=self.manifest)
     def tearDown(self):
@@ -39,18 +40,29 @@ class TestsFlujo(unittest.TestCase):
         data = json.loads(self.manifest.read_text())
         self.assertEqual(data['sequenceNumber'],101)
         self.assertEqual(data['records'],3)
-        self.assertEqual(data['schemaVersion'],2)
+        self.assertEqual(set(data),{'format','dateEpoch','filename','sequenceNumber','records','updatedAt','encryptedBytes','sqliteBytes','sha256'})
         self.assertEqual(data['dateEpoch'],EPOCH_TEXT)
         self.assertEqual(data['sha256'],hashlib.sha256(self.enc.read_bytes()).hexdigest())
         restored=self.folder/'restaurado.sqlite'
         decrypt_database(self.enc,restored,self.password)
         with sqlite3.connect(restored) as con:
-            self.assertEqual(validate_schema(con,integrity=True)['sequenceNumber'],'101')
+            self.assertEqual(validate_schema(con,integrity=True),{'sequenceNumber':'101','dateEpoch':EPOCH_TEXT})
             rows=con.execute('SELECT user_id,user_name,date_first,date_span FROM whosthat ORDER BY user_id').fetchall()
             self.assertEqual(len(rows),3)
             self.assertEqual((to_text(rows[0][2]),to_text(rows[0][2]+rows[0][3])),('2025-12-01','2026-01-05'))
             self.assertEqual((to_text(rows[2][2]),to_text(rows[2][2]+rows[2][3])),('2026-02-28','2026-03-01'))
             self.assertEqual([x[1] for x in rows],['Alba','CASE','Ñandú 🧭'])
+    def test_metadatos_innecesarios_se_eliminan_al_actualizar(self):
+        with sqlite3.connect(self.raw) as con:
+            con.execute("INSERT INTO metadata VALUES ('campo_innecesario','1')")
+        with patch.object(publisher,'decrypt_database',side_effect=lambda src,dst,password: shutil.copyfile(self.raw,dst)),patch.object(updater,'remote_state',return_value=100):
+            self.run_publisher()
+        restored=self.folder/'limpio.sqlite'
+        decrypt_database(self.enc,restored,self.password)
+        with sqlite3.connect(restored) as con:
+            self.assertEqual(validate_schema(con),{'sequenceNumber':'100','dateEpoch':EPOCH_TEXT})
+            self.assertEqual(con.execute('SELECT COUNT(*) FROM whosthat').fetchone()[0],2)
+        self.assertEqual(set(json.loads(self.manifest.read_text())),{'format','dateEpoch','filename','sequenceNumber','records','updatedAt','encryptedBytes','sqliteBytes','sha256'})
     def test_error_diff_no_modifica_archivos_cifrados(self):
         before=(self.enc.read_bytes(),self.manifest.read_bytes())
         with patch.object(updater, 'remote_state', return_value=101), patch.object(updater, 'fetch_and_parse', side_effect=RuntimeError('fallo simulado')):

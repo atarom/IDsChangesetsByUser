@@ -10,7 +10,7 @@ class TestsRelease(unittest.TestCase):
         self.folder = Path(self.temp.name)
         self.payload = b'WTHDB01\0' + bytes(range(80))
         (self.folder / 'whosthat.db.gz.enc').write_bytes(self.payload)
-        self.meta = {'format': 'WTHDB01', 'filename': 'whosthat.db.gz.enc', 'schemaVersion': 2, 'dateEpoch': '2005-04-17', 'sequenceNumber': 123, 'records': 2631265, 'encryptedBytes': len(self.payload), 'sqliteBytes': 74868326, 'sha256': hashlib.sha256(self.payload).hexdigest()}
+        self.meta = {'format': 'WTHDB01', 'filename': 'whosthat.db.gz.enc', 'dateEpoch': '2005-04-17', 'sequenceNumber': 123, 'records': 2631265, 'encryptedBytes': len(self.payload), 'sqliteBytes': 74868326, 'sha256': hashlib.sha256(self.payload).hexdigest()}
         self.save()
     def tearDown(self):
         self.temp.cleanup()
@@ -18,8 +18,8 @@ class TestsRelease(unittest.TestCase):
         (self.folder / 'version.json').write_text(json.dumps(self.meta), encoding='utf-8')
     def test_acepta_release_actual(self):
         validar(self.folder)
-    def test_rechaza_formato_antiguo(self):
-        self.meta['schemaVersion'] = 1
+    def test_rechaza_fecha_base_incorrecta(self):
+        self.meta['dateEpoch'] = '2005-04-18'
         self.save()
         with self.assertRaisesRegex(ValueError, 'fechas relativas'):
             validar(self.folder)
