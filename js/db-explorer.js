@@ -8,10 +8,19 @@
   const next = by('hxNext');
   const pageInfo = by('hxPage');
   const PAGE_SIZE = 100;
+  const MAX_EXPORT_ROWS = 25000;
   const node = (tag, text, className) => { const element = document.createElement(tag); if (text !== undefined) element.textContent = text; if (className) element.className = className; return element; };
   const validUid = value => { const uid = Number(value); return Number.isSafeInteger(uid) && uid > 0 ? uid : null; };
   const sorts = {names: {sort: 'name', direction: 'asc', custom: false}, dates: {sort: 'first', direction: 'desc', custom: false}, ranking: {sort: 'total', direction: 'desc', custom: false}, shared: {sort: 'total', direction: 'desc', custom: false}};
-  const state = {tab: 'names', request: null, page: 0, cursors: [0], more: false, busy: false, generation: 0, detailGeneration: 0, lastFocus: null};
+  const state = {tab: 'names', request: null, page: 0, cursors: [0], more: false, busy: false, exporting: false, hasResults: false, generation: 0, detailGeneration: 0, lastFocus: null};
+  const exportGroup = node('div', undefined, 'hx-export');
+  const exportCsv = node('button', 'Exportar CSV');
+  const exportJson = node('button', 'Exportar JSON');
+  exportCsv.id = 'hxExportCsv';
+  exportJson.id = 'hxExportJson';
+  for (const button of [exportCsv, exportJson]) { button.type = 'button'; button.disabled = true; button.title = 'Exportar todos los resultados filtrados (máximo 25.000 registros)'; exportGroup.append(button); }
+  pageInfo.after(exportGroup);
+  function updateExportControls() { for (const button of [exportCsv, exportJson]) button.disabled = !state.request || !state.hasResults || state.busy || state.exporting; }
   const source = document.currentScript?.src;
   if (source) {
     const stylesheet = node('link');
@@ -54,7 +63,10 @@
     state.page = 0;
     state.cursors = [0];
     state.busy = false;
+    state.exporting = false;
+    state.hasResults = false;
     state.more = false;
+    updateExportControls();
     results.replaceChildren(node('p', message, 'hx-empty'));
     status.textContent = message;
     pageInfo.textContent = 'Sin resultados';
@@ -89,6 +101,8 @@
     resetDetail();
     state.generation++;
     state.busy = false;
+    state.exporting = false;
+    updateExportControls();
     state.lastFocus?.focus?.();
   }
   function tableColumns() {
@@ -152,7 +166,10 @@
     const regexCursor = request.mode === 'names' && request.match === 'regex' && request.name && !request.uid && request.sort === 'uid' && request.direction === 'asc';
     if (regexCursor) request.cursor = state.cursors[state.page] || 0;
     const generation = ++state.generation;
+    state.exporting = false;
     state.busy = true;
+    state.hasResults = false;
+    updateExportControls();
     prev.disabled = true;
     next.disabled = true;
     status.textContent = 'Consultando la base local…';
@@ -163,6 +180,7 @@
       state.more = !!response.more;
       if (regexCursor) state.cursors[state.page + 1] = response.nextCursor;
       const rows = response.rows || [];
+      state.hasResults = rows.length > 0;
       if (rows.length) renderRows(rows);
       else results.replaceChildren(node('p', 'No hay resultados con estos filtros.', 'hx-empty'));
       status.textContent = rows.length ? `${rows.length} resultados en esta página.` : 'Sin coincidencias.';
@@ -170,6 +188,7 @@
     } catch (error) {
       if (generation !== state.generation || dialog.hidden) return;
       state.more = false;
+      state.hasResults = false;
       results.replaceChildren(node('p', 'No se ha podido completar la consulta.', 'hx-empty'));
       status.textContent = 'Error: ' + error.message;
       pageInfo.textContent = 'Sin resultados';
@@ -178,6 +197,7 @@
         state.busy = false;
         prev.disabled = state.page === 0;
         next.disabled = !state.more;
+        updateExportControls();
       }
     }
   }
@@ -198,6 +218,70 @@
     state.cursors = [0];
     void runSearch();
   }
+  function exportColumns(tab) {
+    if (tab === 'shared') return [['nombre_historico', 'name'], ['uid_diferentes', 'total'], ['primera_observacion', 'first'], ['ultima_observacion', 'last']];
+    if (tab === 'ranking') return [['uid', 'uid'], ['nombres_distintos', 'total'], ['ultima_observacion', 'last']];
+    return [['uid', 'uid'], ['nombre_historico', 'name'], ['primera_observacion', 'first'], ['ultima_observacion', 'last']];
+  }
+  function csvValue(value) {
+    const text = String(value ?? '');
+    return '"' + (/^[\s]*[=+\-@]/.test(text) ? "'" : '') + text.replaceAll('"', '""') + '"';
+  }
+  function exportData(format, tab, request, rows) {
+    if (format === 'json') return JSON.stringify({exportado_utc: new Date().toISOString(), vista: tab, filtros: request, total: rows.length, registros: rows}, null, 2);
+    const columns = exportColumns(tab);
+    return [columns.map(([title]) => csvValue(title)).join(','), ...rows.map(row => columns.map(([, key]) => csvValue(row[key])).join(','))].join('\r\n') + '\r\n';
+  }
+  async function exportResults(format) {
+    if (!['csv', 'json'].includes(format) || !state.request || !state.hasResults || state.busy || state.exporting) return;
+    const generation = state.generation;
+    const tab = state.tab;
+    const current = sorts[tab];
+    const request = {...state.request, sort: current.sort, direction: current.direction};
+    const regexCursor = request.mode === 'names' && request.match === 'regex' && request.name && !request.uid && request.sort === 'uid' && request.direction === 'asc';
+    const rows = [];
+    let page = 0;
+    let cursor = 0;
+    state.exporting = true;
+    updateExportControls();
+    try {
+      while (true) {
+        const query = {...request, page};
+        if (regexCursor) query.cursor = cursor;
+        const response = await WhoDB.explore(query);
+        if (generation !== state.generation || dialog.hidden) return;
+        const batch = response.rows || [];
+        if (!batch.length && response.more) throw Error('La consulta no ha podido avanzar de página.');
+        if (rows.length + batch.length > MAX_EXPORT_ROWS || (rows.length + batch.length === MAX_EXPORT_ROWS && response.more)) throw Error('Más de 25.000 resultados. Aplica un filtro más específico.');
+        rows.push(...batch);
+        status.textContent = `Preparando ${format.toUpperCase()}: ${rows.length.toLocaleString('es-ES')} registros…`;
+        if (!response.more) break;
+        if (regexCursor) {
+          if (!response.nextCursor || JSON.stringify(response.nextCursor) === JSON.stringify(cursor)) throw Error('No se puede continuar la exportación por páginas.');
+          cursor = response.nextCursor;
+        }
+        page++;
+      }
+      if (!rows.length) { status.textContent = 'La consulta no contiene registros para exportar.'; return; }
+      const text = exportData(format, tab, request, rows);
+      const blob = new Blob([format === 'csv' ? '\uFEFF' + text : text], {type: format === 'csv' ? 'text/csv;charset=utf-8' : 'application/json;charset=utf-8'});
+      const address = URL.createObjectURL(blob);
+      const link = node('a');
+      link.href = address;
+      link.download = `whosthat-${tab}-${new Date().toISOString().slice(0, 10)}.${format}`;
+      document.body.append(link);
+      link.click();
+      link.remove();
+      setTimeout(() => URL.revokeObjectURL(address), 1000);
+      status.textContent = `${rows.length.toLocaleString('es-ES')} registros exportados en ${format.toUpperCase()}.`;
+    } catch (error) {
+      if (generation === state.generation && !dialog.hidden) status.textContent = 'Exportación fallida: ' + error.message;
+    } finally {
+      if (generation === state.generation) { state.exporting = false; updateExportControls(); }
+    }
+  }
+  exportCsv.addEventListener('click', () => { void exportResults('csv'); });
+  exportJson.addEventListener('click', () => { void exportResults('json'); });
   async function showSharedName(name, page = 0) {
     const sequence = ++state.detailGeneration;
     detail.hidden = false;

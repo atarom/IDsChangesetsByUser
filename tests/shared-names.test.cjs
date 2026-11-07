@@ -128,7 +128,8 @@ class Element {
   getAttribute(name) {return this.attributes[name];}
   getClientRects() {return this.hidden ? [] : [{}];}
   focus() {this.document.activeElement = this;}
-  click() {this.fire('click');}
+  click() {if (this.tagName === 'a' && this.download) this.document.downloaded.push({href: this.href, name: this.download});this.fire('click');}
+  remove() {if (this.parentElement) {this.parentElement.children = this.parentElement.children.filter(child => child !== this);this.parentElement = null;}}
   closest(selector) {
     let current = this;
     while (current) {
@@ -150,9 +151,12 @@ class Element {
   }
   querySelector(selector) {if (selector === '.hx-tab.active') return this.querySelectorAll('.hx-tab').find(item => item.classList.contains('active'));return null;}
 }
-function uiHarness(more = false, empty = false) {
+function uiHarness(more = false, empty = false, pages = null) {
   const document = {ids: new Map(),activeElement: null,createElement(tag) {return new Element(tag, this);},getElementById(id) {return this.ids.get(id);},currentScript: {src: 'https://example.test/app/js/db-explorer.js'}};
   document.head = document.createElement('head');
+  document.body = document.createElement('body');
+  document.downloaded = [];
+  document.blobs = [];
   const create = (id, tag = 'div', className = '') => {const element = document.createElement(tag);element.id = id;element.className = className;return element;};
   const dialog = create('historyExplorer');
   dialog.hidden = true;
@@ -171,13 +175,17 @@ function uiHarness(more = false, empty = false) {
   const calls = [];
   const WhoDB = {ready: true,async explore(q) {
     calls.push(q);
+    if (pages && ['names', 'dates', 'ranking', 'shared'].includes(q.mode)) {const page = q.page || 0;const rows = pages[page] || [];return {rows, more: page < pages.length - 1, nextCursor: rows.length ? [rows.at(-1).uid, rows.at(-1).name] : null};}
     if (q.mode === 'shared') return {rows: [{name: 'Alba', total: 3, first: '2020-01-01', last: '2023-01-01'}], more: false};
     if (q.mode === 'shared_users') return {rows: [{uid: q.page ? 3 : 1, name: 'Alba', first: '2020-01-01', last: '2020-01-02'}, {uid: 2, name: 'Alba', first: '2022-01-01', last: '2023-01-01'}], more: more && !q.page};
     if (q.mode === 'user') return {rows: [{name: empty ? '' : 'Alba', first: '2020-01-01', last: '2020-01-02'}], more: false};
     if (empty && q.mode === 'names') return {rows: [{uid: 8, name: '', first: '2020-01-01', last: '2020-01-02'}], more: false};
     return {rows: [{uid: 1, name: 'Alba', first: '2020-01-01', last: '2020-01-02', total: 3}], more: false};
   }};
-  const ctx = {document,window: {},WhoDB,console,Date,Map,Set,URL,DOMParser: class {},fetch: async () => ({ok: false,status: 404})};
+  class MockURL extends URL {}
+  MockURL.createObjectURL = blob => {document.blobs.push(blob);return 'blob:export-' + document.blobs.length;};
+  MockURL.revokeObjectURL = () => {};
+  const ctx = {document,window: {},WhoDB,console,Date,Map,Set,URL: MockURL,Blob,setTimeout: callback => callback(),DOMParser: class {},fetch: async () => ({ok: false,status: 404})};
   vm.createContext(ctx);
   vm.runInContext(fs.readFileSync(path.join(root, 'js/db-explorer.js'), 'utf8'), ctx);
   return {document,dialog,calls,open: ctx.window.HistoryExplorer.open,by: document.getElementById.bind(document)};
@@ -321,4 +329,55 @@ test('La interfaz muestra el nombre vacío y permite consultar su UID por regex'
   h.by('hxNameForm').fire('submit');
   await settle();
   assert.equal(h.calls.length, count);
+});
+test('Exportar CSV incluye todas las páginas, nombres vacíos y caracteres Unicode sin sustituirlos', async () => {
+  const rows = [[{uid: 8, name: '', first: '2024-05-16', last: '2024-05-16'}, {uid: 9, name: '𝐇𝐀𝐌𝐎𝐎𝐃𝐘', first: '2024-05-17', last: '2024-05-18'}], [{uid: 10, name: '=SUM(1,1)', first: '2024-05-19', last: '2024-05-20'}]];
+  const h = uiHarness(false, false, rows);
+  h.open();
+  h.by('hxMatch').value = 'regex';
+  h.by('hxName').value = '^$|.*';
+  h.by('hxNameForm').fire('submit');
+  await settle();
+  assert.equal(h.by('hxExportCsv').disabled, false);
+  h.by('hxExportCsv').click();
+  await settle();
+  assert.equal(h.document.downloaded.length, 1);
+  assert.match(h.document.downloaded[0].name, /^whosthat-names-\d{4}-\d{2}-\d{2}\.csv$/);
+  const csv = await h.document.blobs[0].text();
+  assert.deepEqual([...new Uint8Array(await h.document.blobs[0].arrayBuffer()).slice(0, 3)], [239, 187, 191]);
+  assert.ok(csv.includes('"8","","2024-05-16","2024-05-16"'));
+  assert.ok(csv.includes('𝐇𝐀𝐌𝐎𝐎𝐃𝐘'));
+  assert.ok(csv.includes("\"10\",\"'=SUM(1,1)\""));
+  assert.deepEqual(h.calls.filter(q => q.mode === 'names').map(q => q.page), [0, 0, 1]);
+  assert.match(h.by('hxStatus').textContent, /3 registros exportados/);
+});
+test('Exportar JSON preserva nombres originales y los filtros y el orden de la consulta', async () => {
+  const h = uiHarness(false, false, [[{uid: 8, name: '', first: '2024-05-16', last: '2024-05-16'}]]);
+  h.open();
+  h.by('hxMatch').value = 'regex';
+  h.by('hxName').value = '^$';
+  h.by('hxNameForm').fire('submit');
+  await settle();
+  h.by('hxExportJson').click();
+  await settle();
+  const json = JSON.parse(await h.document.blobs[0].text());
+  assert.equal(json.total, 1);
+  assert.equal(json.vista, 'names');
+  assert.equal(json.filtros.name, '^$');
+  assert.equal(json.filtros.direction, 'asc');
+  assert.equal(json.registros[0].name, '');
+  assert.equal(json.registros[0].uid, 8);
+});
+test('Exportación demasiado grande no crea un archivo incompleto', async () => {
+  const rows = Array.from({length: 251}, (_, page) => Array.from({length: 100}, (_, index) => ({uid: page * 100 + index + 1, name: 'N', first: '2025-01-01', last: '2025-01-01'})));
+  const h = uiHarness(false, false, rows);
+  h.open();
+  h.by('hxName').value = 'N';
+  h.by('hxNameForm').fire('submit');
+  await settle();
+  h.by('hxExportCsv').click();
+  await settle();
+  assert.equal(h.document.downloaded.length, 0);
+  assert.match(h.by('hxStatus').textContent, /Más de 25.000/);
+  assert.equal(h.by('hxExportCsv').disabled, false);
 });

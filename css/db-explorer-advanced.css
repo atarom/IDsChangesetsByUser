@@ -7,3 +7,7 @@
 .hx-table.hx-table-shared th:nth-child(2),.hx-table.hx-table-shared td:nth-child(2){width:16%;}
 .hx-table.hx-table-shared th:nth-child(3),.hx-table.hx-table-shared td:nth-child(3),.hx-table.hx-table-shared th:nth-child(4),.hx-table.hx-table-shared td:nth-child(4){width:22%;}
 @media(max-width:600px){.hx-table.hx-table-shared{min-width:600px;}}
+.hx-export{display:flex;flex-wrap:wrap;gap:6px;}
+.hx-export button{width:auto;min-height:35px;padding:6px 10px;background:var(--p2);color:var(--t);font-size:12px;}
+.hx-export button:not(:disabled):hover{background:var(--p3);}
+@media(max-width:600px){.hx-footer{flex-wrap:wrap;}.hx-export{order:3;width:100%;justify-content:flex-end;}}
