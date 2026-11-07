@@ -137,7 +137,7 @@
         cell.append(button);
         tr.append(cell);
         if (state.tab === 'ranking') tr.append(node('td', Number(row.total).toLocaleString('es-ES')), node('td', row.last || '—'));
-        else tr.append(node('td', row.name, 'hx-name'), node('td', row.first || '—'), node('td', row.last || '—'));
+        else tr.append(node('td', row.name === '' ? '(nombre vacío)' : row.name, 'hx-name'), node('td', row.first || '—'), node('td', row.last || '—'));
       }
       body.append(tr);
     });
@@ -267,7 +267,7 @@
       const list = node('div', undefined, 'hx-names-list');
       for (const entry of response.rows) {
         const line = node('div', undefined, 'hx-name-entry');
-        line.append(node('span', entry.name), node('small', `${entry.first} → ${entry.last}`));
+        line.append(node('span', entry.name === '' ? '(nombre vacío)' : entry.name), node('small', `${entry.first} → ${entry.last}`));
         list.append(line);
       }
       if (!response.rows.length) list.append(node('p', 'No hay nombres registrados para este UID.'));

@@ -150,7 +150,7 @@ class Element {
   }
   querySelector(selector) {if (selector === '.hx-tab.active') return this.querySelectorAll('.hx-tab').find(item => item.classList.contains('active'));return null;}
 }
-function uiHarness(more = false) {
+function uiHarness(more = false, empty = false) {
   const document = {ids: new Map(),activeElement: null,createElement(tag) {return new Element(tag, this);},getElementById(id) {return this.ids.get(id);},currentScript: {src: 'https://example.test/app/js/db-explorer.js'}};
   document.head = document.createElement('head');
   const create = (id, tag = 'div', className = '') => {const element = document.createElement(tag);element.id = id;element.className = className;return element;};
@@ -173,7 +173,8 @@ function uiHarness(more = false) {
     calls.push(q);
     if (q.mode === 'shared') return {rows: [{name: 'Alba', total: 3, first: '2020-01-01', last: '2023-01-01'}], more: false};
     if (q.mode === 'shared_users') return {rows: [{uid: q.page ? 3 : 1, name: 'Alba', first: '2020-01-01', last: '2020-01-02'}, {uid: 2, name: 'Alba', first: '2022-01-01', last: '2023-01-01'}], more: more && !q.page};
-    if (q.mode === 'user') return {rows: [{name: 'Alba', first: '2020-01-01', last: '2020-01-02'}], more: false};
+    if (q.mode === 'user') return {rows: [{name: empty ? '' : 'Alba', first: '2020-01-01', last: '2020-01-02'}], more: false};
+    if (empty && q.mode === 'names') return {rows: [{uid: 8, name: '', first: '2020-01-01', last: '2020-01-02'}], more: false};
     return {rows: [{uid: 1, name: 'Alba', first: '2020-01-01', last: '2020-01-02', total: 3}], more: false};
   }};
   const ctx = {document,window: {},WhoDB,console,Date,Map,Set,URL,DOMParser: class {},fetch: async () => ({ok: false,status: 404})};
@@ -264,4 +265,60 @@ test('La navegación por teclado incluye la nueva pestaña', async () => {
   assert.equal(event.prevented, true);
   assert.equal(h.document.activeElement, h.by('hxTabShared'));
   assert.equal(h.by('hxTabShared').getAttribute('aria-selected'), 'true');
+});
+test('Regex ^$ permite consultar nombres vacíos con todas las ordenaciones y con UID', () => {
+  const h = workerHarness(FIXTURE);
+  const options = {mode: 'names', match: 'regex', name: '^$'};
+  assert.deepEqual(h.explore(options).rows.map(row => [row.uid, row.name]), [[8, '']]);
+  assert.deepEqual(h.explore({...options, sort: 'first', direction: 'desc'}).rows.map(row => row.uid), [8]);
+  assert.deepEqual(h.explore({...options, uid: 8}).rows.map(row => row.uid), [8]);
+  assert.deepEqual(h.explore({...options, uid: 7}).rows, []);
+  assert.deepEqual(h.explore({mode: 'user', uid: 8}).rows.map(row => row.name), ['']);
+  assert.throws(() => h.explore({mode: 'names', match: 'regex', name: ''}), /Introduce/);
+  h.db.close();
+});
+test('Regex con alternativas incluye vacíos, el resto de búsquedas continúa excluyéndolos', () => {
+  const h = workerHarness(FIXTURE);
+  const options = {mode: 'names', match: 'regex', name: '^$|^Alba$'};
+  assert.deepEqual(h.explore(options).rows.map(row => row.uid), [1, 2, 6, 8]);
+  assert.deepEqual(h.explore({...options, sort: 'uid', direction: 'desc'}).rows.map(row => row.uid), [8, 6, 2, 1]);
+  assert.deepEqual(h.explore({mode: 'names', match: 'contains', name: 'Alba'}).rows.map(row => row.uid), [1, 2, 6]);
+  assert.deepEqual(h.explore({mode: 'ranking', min: 1}).rows.map(row => row.uid).includes(8), false);
+  h.db.close();
+});
+test('Cursor de regex admite nombres vacíos y permite paginación completa', () => {
+  const rows = Array.from({length: 207}, (_, i) => [i + 1, '', '2026-01-01', '2026-01-02']);
+  rows.push([208, 'No vacío', '2026-01-01', '2026-01-02']);
+  const h = workerHarness(rows);
+  const options = {mode: 'names', match: 'regex', name: '^$'};
+  const first = h.explore(options);
+  const second = h.explore({...options, cursor: first.nextCursor});
+  const third = h.explore({...options, cursor: second.nextCursor});
+  assert.deepEqual([first.rows.length, second.rows.length, third.rows.length], [100, 100, 7]);
+  assert.deepEqual([first.more, second.more, third.more], [true, true, false]);
+  assert.deepEqual([first.nextCursor, second.nextCursor], [[100, ''], [200, '']]);
+  assert.equal(new Set([...first.rows, ...second.rows, ...third.rows].map(row => row.uid)).size, 207);
+  h.db.close();
+});
+test('La interfaz muestra el nombre vacío y permite consultar su UID por regex', async () => {
+  const h = uiHarness(false, true);
+  h.open();
+  h.by('hxMatch').value = 'regex';
+  h.by('hxName').value = '^$';
+  h.by('hxNameForm').fire('submit');
+  await settle();
+  assert.equal(h.calls.at(-1).name, '^$');
+  const row = h.by('hxResults').children[0].children[1].children[0];
+  assert.equal(row.children[1].textContent, '(nombre vacío)');
+  const button = row.children[0].children[0];
+  h.by('hxResults').fire('click', button);
+  await settle();
+  assert.equal(h.calls.at(-1).mode, 'user');
+  assert.equal(h.calls.at(-1).uid, 8);
+  assert.equal(h.by('hxDetail').children[1].children[0].children[0].textContent, '(nombre vacío)');
+  h.by('hxName').value = '';
+  const count = h.calls.length;
+  h.by('hxNameForm').fire('submit');
+  await settle();
+  assert.equal(h.calls.length, count);
 });

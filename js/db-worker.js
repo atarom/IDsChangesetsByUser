@@ -233,14 +233,20 @@ function historyOrder(message, fields, sortDefault, directionDefault, tie = 'use
   if (!Object.hasOwn(fields, sort) || !['asc', 'desc'].includes(direction)) throw Error('Orden de columnas incorrecto.');
   return fields[sort] + ' ' + direction.toUpperCase() + ',' + tie;
 }
+function historyRegexFilter(pattern, expression) {
+  if (pattern === '^$') return {clause: 'user_name = ?', params: ['']};
+  if (expression.test('')) return {clause: '', params: []};
+  return {clause: 'user_name <> ?', params: ['']};
+}
 function historyRegexSorted(pattern, page, order) {
   let expression;
   try { expression = new RegExp(pattern, 'i'); } catch (error) { throw Error('Regex no válida: ' + error.message); }
-  const statement = localDB.prepare('SELECT user_id,user_name,date_first,date_span FROM whosthat WHERE user_name <> ? ORDER BY ' + order);
+  const filter = historyRegexFilter(pattern, expression);
+  const statement = localDB.prepare('SELECT user_id,user_name,date_first,date_span FROM whosthat' + (filter.clause ? ' WHERE ' + filter.clause : '') + ' ORDER BY ' + order);
   const rows = [];
   let matches = 0;
   try {
-    statement.bind(['']);
+    statement.bind(filter.params);
     while (statement.step()) {
       const row = statement.get();
       if (!expression.test(row[1])) continue;
@@ -261,16 +267,18 @@ function historyRegex(pattern, cursor) {
   if (pattern.length > 120) throw Error('El patrón regex no puede superar 120 caracteres.');
   let expression;
   try { expression = new RegExp(pattern, 'i'); } catch (error) { throw Error('Regex no válida: ' + error.message); }
+  const filter = historyRegexFilter(pattern, expression);
   let after = null;
   if (cursor !== undefined && cursor !== null && cursor !== 0) {
-    if (!Array.isArray(cursor) || cursor.length !== 2 || !Number.isSafeInteger(cursor[0]) || cursor[0] <= 0 || typeof cursor[1] !== 'string' || !cursor[1]) throw Error('Cursor de búsqueda inválido.');
+    if (!Array.isArray(cursor) || cursor.length !== 2 || !Number.isSafeInteger(cursor[0]) || cursor[0] <= 0 || typeof cursor[1] !== 'string') throw Error('Cursor de búsqueda inválido.');
     after = cursor;
   }
   const rows = [];
   let lastMatch = after;
   while (rows.length <= EXPLORER_PAGE_SIZE) {
-    const sql = after ? 'SELECT user_id,user_name,date_first,date_span FROM whosthat WHERE (user_id,user_name) > (?,?) AND user_name <> ? ORDER BY user_id,user_name LIMIT 2000' : 'SELECT user_id,user_name,date_first,date_span FROM whosthat WHERE user_name <> ? ORDER BY user_id,user_name LIMIT 2000';
-    const batch = historyRows(sql, after ? [after[0], after[1], ''] : ['']);
+    const where = [after ? '(user_id,user_name) > (?,?)' : '', filter.clause].filter(Boolean);
+    const sql = 'SELECT user_id,user_name,date_first,date_span FROM whosthat' + (where.length ? ' WHERE ' + where.join(' AND ') : '') + ' ORDER BY user_id,user_name LIMIT 2000';
+    const batch = historyRows(sql, [...(after || []), ...filter.params]);
     if (!batch.length) break;
     for (const [uid, name, first, span] of batch) {
       after = [uid, name];
@@ -288,7 +296,7 @@ function historyExplore(message) {
   const mode = String(message.mode || '');
   if (mode === 'user') {
     const uid = historyUid(message.uid);
-    const rows = historyRows('SELECT user_name,date_first,date_span FROM whosthat WHERE user_id = ? AND user_name <> ? ORDER BY date_first ASC,user_name COLLATE NOCASE LIMIT 1001', [uid, '']);
+    const rows = historyRows('SELECT user_name,date_first,date_span FROM whosthat WHERE user_id = ? ORDER BY date_first ASC,user_name COLLATE NOCASE LIMIT 1001', [uid]);
     return {uid, rows: rows.slice(0, 1000).map(([name, first, span]) => ({name, first: dateText(first), last: dateText(first + span)})), more: rows.length > 1000};
   }
   if (mode === 'shared_users') {
@@ -347,7 +355,8 @@ function historyExplore(message) {
       if (message.uid) {
         const uid = historyUid(message.uid);
         const expression = (() => { try { return new RegExp(name, 'i'); } catch (error) { throw Error('Regex no válida: ' + error.message); } })();
-        const rows = historyRows('SELECT user_id,user_name,date_first,date_span FROM whosthat WHERE user_id = ? AND user_name <> ? ORDER BY ' + order, [uid, '']).filter(row => expression.test(row[1])).slice(offset, offset + EXPLORER_PAGE_SIZE + 1);
+        const filter = historyRegexFilter(name, expression);
+        const rows = historyRows('SELECT user_id,user_name,date_first,date_span FROM whosthat WHERE user_id = ?' + (filter.clause ? ' AND ' + filter.clause : '') + ' ORDER BY ' + order, [uid, ...filter.params]).filter(row => expression.test(row[1])).slice(offset, offset + EXPLORER_PAGE_SIZE + 1);
         return historyPage(rows, historyRecord);
       }
       if ((message.sort === undefined || message.sort === 'uid') && (message.direction === undefined || message.direction === 'asc')) return historyRegex(name, message.cursor);
