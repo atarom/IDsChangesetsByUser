@@ -89,6 +89,31 @@ class TestsFlujo(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError,'fallo simulado'):
                 self.run_publisher()
         self.assertEqual((self.enc.read_bytes(),self.manifest.read_bytes()),before)
+    def test_vacuum_compacta_antes_del_cifrado(self):
+        with sqlite3.connect(self.raw) as con:
+            con.executemany('INSERT INTO whosthat VALUES (?,?,?,?)', ((uid,'Nombre-' + str(uid) + '-' * 180,to_days('2026-01-01'),0) for uid in range(10,2500)))
+            con.execute('DELETE FROM whosthat WHERE user_id>=10')
+            self.assertGreater(con.execute('PRAGMA freelist_count').fetchone()[0],0)
+        before=self.raw.stat().st_size
+        encrypt_database(self.raw,self.enc,self.password,version_path=self.manifest)
+        with patch.object(updater,'remote_state',return_value=100):
+            self.run_publisher()
+        manifest=json.loads(self.manifest.read_text())
+        self.assertLess(manifest['sqliteBytes'],before)
+        self.assertEqual(manifest['sequenceNumber'],100)
+        self.assertEqual(manifest['records'],2)
+        recovered=self.folder/'compactada.sqlite'
+        decrypt_database(self.enc,recovered,self.password)
+        with sqlite3.connect(recovered) as con:
+            self.assertEqual(con.execute('PRAGMA freelist_count').fetchone()[0],0)
+            self.assertEqual(validate_schema(con,integrity=True),{'sequenceNumber':'100','dateEpoch':EPOCH_TEXT})
+        validar(self.folder)
+    def test_error_vacuum_no_modifica_archivos_publicables(self):
+        before=(self.enc.read_bytes(),self.manifest.read_bytes())
+        with patch.object(updater,'remote_state',return_value=100),patch.object(publisher,'compact_database',side_effect=RuntimeError('fallo VACUUM simulado')):
+            with self.assertRaisesRegex(RuntimeError,'fallo VACUUM simulado'):
+                self.run_publisher()
+        self.assertEqual((self.enc.read_bytes(),self.manifest.read_bytes()),before)
     def test_esquema_rechaza_indice_secundario(self):
         with sqlite3.connect(self.raw) as con:
             con.execute('CREATE INDEX indice_extra ON whosthat(user_name)')

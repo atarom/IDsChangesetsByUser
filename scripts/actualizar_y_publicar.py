@@ -8,6 +8,17 @@ import tempfile
 import time
 from crypto_db import decrypt_database, encrypt_database
 from actualizar_whosthat_rapido import run, SOURCE
+def compact_database(sqlite_file):
+    before = sqlite_file.stat().st_size
+    started = time.perf_counter()
+    con = sqlite3.connect(sqlite_file, isolation_level=None)
+    try:
+        con.execute('VACUUM')
+    finally:
+        con.close()
+    after = sqlite_file.stat().st_size
+    print(f'VACUUM: {before / 1048576:.2f} → {after / 1048576:.2f} MiB; reducción {(before - after) / before * 100:.2f} %.', flush=True)
+    return time.perf_counter() - started
 def main():
     p = argparse.ArgumentParser(description='Actualizar base cifrada Who\'s That?')
     p.add_argument('--encrypted', type=Path, default=Path(__file__).parent.parent / 'data' / 'whosthat.db.gz.enc')
@@ -35,6 +46,8 @@ def main():
         stage = time.perf_counter()
         run(sqlite_file, args.source, args.max_files, False, args.workers)
         timings['Actualización de diffs'] = time.perf_counter() - stage
+        print('Compactando SQLite con VACUUM...', flush=True)
+        timings['VACUUM'] = compact_database(sqlite_file)
         print('Validando, comprimiendo y cifrando SQLite...', flush=True)
         stage = time.perf_counter()
         meta = encrypt_database(sqlite_file, args.encrypted, password, version_path=args.version)
