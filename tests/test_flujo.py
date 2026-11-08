@@ -114,6 +114,22 @@ class TestsFlujo(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError,'fallo VACUUM simulado'):
                 self.run_publisher()
         self.assertEqual((self.enc.read_bytes(),self.manifest.read_bytes()),before)
+    def test_zopfli_cinco_iteraciones_y_gzip_compatible(self):
+        from crypto_db import zopfli_compress
+        with patch('crypto_db.zopfli_compress', wraps=zopfli_compress) as compressor:
+            encrypt_database(self.raw,self.enc,self.password,version_path=self.manifest)
+        compressor.assert_called_once()
+        self.assertEqual(compressor.call_args.kwargs,{'numiterations':5})
+        restored=self.folder/'zopfli.sqlite'
+        decrypt_database(self.enc,restored,self.password)
+        self.assertEqual(restored.read_bytes(),self.raw.read_bytes())
+        validar(self.folder)
+    def test_error_zopfli_no_modifica_archivos_publicables(self):
+        before=(self.enc.read_bytes(),self.manifest.read_bytes())
+        with patch.object(updater,'remote_state',return_value=100),patch('crypto_db.zopfli_compress',side_effect=RuntimeError('fallo Zopfli simulado')):
+            with self.assertRaisesRegex(RuntimeError,'fallo Zopfli simulado'):
+                self.run_publisher()
+        self.assertEqual((self.enc.read_bytes(),self.manifest.read_bytes()),before)
     def test_esquema_rechaza_indice_secundario(self):
         with sqlite3.connect(self.raw) as con:
             con.execute('CREATE INDEX indice_extra ON whosthat(user_name)')

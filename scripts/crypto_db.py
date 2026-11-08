@@ -13,6 +13,7 @@ import time
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
+from zopfli.gzip import compress as zopfli_compress
 try:
     from .formato_fechas import EPOCH_TEXT, assert_data_ranges, validate_schema
 except ImportError:
@@ -73,9 +74,9 @@ def encrypt_database(db_path, enc_path, password, version_path=None):
     enc_path.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix='whosthat-encrypt-') as td:
         tgz = Path(td) / 'whosthat.sqlite.gz'
-        with open(db_path, 'rb') as raw, open(tgz, 'wb') as dest:
-            with gzip.GzipFile(filename='', mode='wb', fileobj=dest, compresslevel=6, mtime=0) as zipped:
-                shutil.copyfileobj(raw, zipped, CHUNK)
+        compression_started = time.perf_counter()
+        tgz.write_bytes(zopfli_compress(db_path.read_bytes(), numiterations=5))
+        print(f'Zopfli 5: {db_path.stat().st_size / 1048576:.2f} → {tgz.stat().st_size / 1048576:.2f} MiB en {time.perf_counter() - compression_started:.2f} s.', flush=True)
         temporary_enc = Path(td) / 'whosthat.db.gz.enc'
         encryptor = Cipher(algorithms.AES(key), modes.GCM(iv)).encryptor()
         with open(tgz, 'rb') as zipped, open(temporary_enc, 'wb') as out:
