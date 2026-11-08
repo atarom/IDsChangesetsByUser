@@ -2,6 +2,7 @@ import hashlib
 import json
 import os
 import shutil
+from contextlib import closing
 from pathlib import Path
 import sqlite3
 import sys
@@ -22,7 +23,7 @@ class TestsFlujo(unittest.TestCase):
         self.enc = self.folder / 'whosthat.db.gz.enc'
         self.manifest = self.folder / 'version.json'
         self.password = 'Clave-de-prueba-local'
-        with sqlite3.connect(self.raw) as con:
+        with closing(sqlite3.connect(self.raw)) as con, con:
             con.execute(WHOSTHAT_DDL)
             con.execute('CREATE TABLE metadata(key TEXT PRIMARY KEY,value TEXT NOT NULL)')
             con.executemany('INSERT INTO metadata VALUES (?,?)', [('sequenceNumber','100'),('dateEpoch',EPOCH_TEXT)])
@@ -51,29 +52,26 @@ class TestsFlujo(unittest.TestCase):
         self.assertEqual(data['sha256'],hashlib.sha256(self.enc.read_bytes()).hexdigest())
         restored=self.folder/'restaurado.sqlite'
         decrypt_database(self.enc,restored,self.password)
-        with sqlite3.connect(restored) as con:
+        with closing(sqlite3.connect(restored)) as con, con:
             self.assertEqual(validate_schema(con,integrity=True),{'sequenceNumber':'101','dateEpoch':EPOCH_TEXT})
             rows=con.execute('SELECT user_id,user_name,date_first,date_span FROM whosthat ORDER BY user_id').fetchall()
             self.assertEqual(len(rows),3)
             self.assertEqual((to_text(rows[0][2]),to_text(rows[0][2]+rows[0][3])),('2025-12-01','2026-01-05'))
             self.assertEqual((to_text(rows[2][2]),to_text(rows[2][2]+rows[2][3])),('2026-02-28','2026-03-01'))
             self.assertEqual([x[1] for x in rows],['Alba','CASE','Ñandú 🧭'])
-    def test_metadatos_innecesarios_se_eliminan_al_actualizar(self):
-        with sqlite3.connect(self.raw) as con:
+    def test_metadatos_extra_se_rechazan_sin_publicar(self):
+        before=(self.enc.read_bytes(),self.manifest.read_bytes())
+        with closing(sqlite3.connect(self.raw)) as con, con:
             con.execute("INSERT INTO metadata VALUES ('campo_innecesario','1')")
-        with patch.object(publisher,'decrypt_database',side_effect=lambda src,dst,password: shutil.copyfile(self.raw,dst)),patch.object(updater,'remote_state',return_value=100):
-            self.run_publisher()
-        restored=self.folder/'limpio.sqlite'
-        decrypt_database(self.enc,restored,self.password)
-        with sqlite3.connect(restored) as con:
-            self.assertEqual(validate_schema(con),{'sequenceNumber':'100','dateEpoch':EPOCH_TEXT})
-            self.assertEqual(con.execute('SELECT COUNT(*) FROM whosthat').fetchone()[0],2)
-        self.assertEqual(set(json.loads(self.manifest.read_text())),{'format','dateEpoch','filename','sequenceNumber','records','statistics','updatedAt','encryptedBytes','sqliteBytes','sha256'})
+        with patch.object(publisher,'decrypt_database',side_effect=lambda src,dst,password: shutil.copyfile(self.raw,dst)):
+            with self.assertRaisesRegex(ValueError,'Metadatos SQLite incorrectos'):
+                self.run_publisher()
+        self.assertEqual((self.enc.read_bytes(),self.manifest.read_bytes()),before)
     def test_estadisticas_excluyen_nombres_vacios_y_cuentan_compartidos(self):
-        with sqlite3.connect(self.raw) as con:
+        with closing(sqlite3.connect(self.raw)) as con, con:
             con.executemany('INSERT INTO whosthat VALUES (?,?,?,?)', [(3,'Alba',to_days('2026-02-01'),5),(3,'Otro',to_days('2026-02-02'),2),(4,'',to_days('2026-02-03'),0)])
         from crypto_db import calculate_statistics
-        with sqlite3.connect(self.raw) as con:
+        with closing(sqlite3.connect(self.raw)) as con, con:
             stats = calculate_statistics(con)
         self.assertEqual(stats['users'],3)
         self.assertEqual(stats['uniqueNames'],3)
@@ -90,7 +88,7 @@ class TestsFlujo(unittest.TestCase):
                 self.run_publisher()
         self.assertEqual((self.enc.read_bytes(),self.manifest.read_bytes()),before)
     def test_vacuum_compacta_antes_del_cifrado(self):
-        with sqlite3.connect(self.raw) as con:
+        with closing(sqlite3.connect(self.raw)) as con, con:
             con.executemany('INSERT INTO whosthat VALUES (?,?,?,?)', ((uid,'Nombre-' + str(uid) + '-' * 180,to_days('2026-01-01'),0) for uid in range(10,2500)))
             con.execute('DELETE FROM whosthat WHERE user_id>=10')
             self.assertGreater(con.execute('PRAGMA freelist_count').fetchone()[0],0)
@@ -104,7 +102,7 @@ class TestsFlujo(unittest.TestCase):
         self.assertEqual(manifest['records'],2)
         recovered=self.folder/'compactada.sqlite'
         decrypt_database(self.enc,recovered,self.password)
-        with sqlite3.connect(recovered) as con:
+        with closing(sqlite3.connect(recovered)) as con, con:
             self.assertEqual(con.execute('PRAGMA freelist_count').fetchone()[0],0)
             self.assertEqual(validate_schema(con,integrity=True),{'sequenceNumber':'100','dateEpoch':EPOCH_TEXT})
         validar(self.folder)
@@ -131,7 +129,7 @@ class TestsFlujo(unittest.TestCase):
                 self.run_publisher()
         self.assertEqual((self.enc.read_bytes(),self.manifest.read_bytes()),before)
     def test_esquema_rechaza_indice_secundario(self):
-        with sqlite3.connect(self.raw) as con:
+        with closing(sqlite3.connect(self.raw)) as con, con:
             con.execute('CREATE INDEX indice_extra ON whosthat(user_name)')
             with self.assertRaisesRegex(ValueError,'índices secundarios'):
                 validate_schema(con)

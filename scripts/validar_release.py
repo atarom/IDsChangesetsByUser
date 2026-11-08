@@ -19,19 +19,20 @@ def validar(folder):
         if type(value) is not int or value <= 0:
             raise ValueError('Valor inválido en el manifiesto: ' + key)
     stats = data.get('statistics')
-    if stats is not None:
-        buckets = stats.get('usersByNameCount') if isinstance(stats, dict) else None
-        counts = [stats.get(key) for key in ('users', 'uniqueNames', 'sharedNames', 'maxNamesPerUser')]
-        if not isinstance(buckets, dict) or set(buckets) != {'1', '2', '3', '4', '5+'} or any(type(value) is not int or value < 0 for value in [*counts, *buckets.values()]):
-            raise ValueError('Estadísticas del manifiesto incorrectas')
-        if sum(buckets.values()) != stats['users'] or not (0 <= stats['sharedNames'] <= stats['uniqueNames'] <= data['records']) or stats['users'] > data['records']:
-            raise ValueError('Recuentos estadísticos incoherentes')
-        for key in ('avgNamesPerUser', 'avgObservedDays'):
-            if type(stats.get(key)) not in (int, float) or not math.isfinite(stats[key]) or stats[key] < 0:
-                raise ValueError('Promedios estadísticos incorrectos')
-        first, last = stats.get('firstObserved'), stats.get('lastObserved')
-        if not all(isinstance(value, str) and re.fullmatch(r'\d{4}-\d{2}-\d{2}', value) for value in (first, last)) or first > last:
-            raise ValueError('Fechas estadísticas incorrectas')
+    if not isinstance(stats, dict):
+        raise ValueError('Estadísticas del manifiesto obligatorias')
+    buckets = stats.get('usersByNameCount')
+    counts = [stats.get(key) for key in ('users', 'uniqueNames', 'sharedNames', 'maxNamesPerUser')]
+    if not isinstance(buckets, dict) or set(buckets) != {'1', '2', '3', '4', '5+'} or any(type(value) is not int or value < 0 for value in [*counts, *buckets.values()]):
+        raise ValueError('Estadísticas del manifiesto incorrectas')
+    if sum(buckets.values()) != stats['users'] or not (0 <= stats['sharedNames'] <= stats['uniqueNames'] <= data['records']) or stats['users'] > data['records']:
+        raise ValueError('Recuentos estadísticos incoherentes')
+    for key in ('avgNamesPerUser', 'avgObservedDays'):
+        if type(stats.get(key)) not in (int, float) or not math.isfinite(stats[key]) or stats[key] < 0:
+            raise ValueError('Promedios estadísticos incorrectos')
+    first, last = stats.get('firstObserved'), stats.get('lastObserved')
+    if not all(isinstance(value, str) and re.fullmatch(r'\d{4}-\d{2}-\d{2}', value) for value in (first, last)) or first > last:
+        raise ValueError('Fechas estadísticas incorrectas')
     if data['encryptedBytes'] != encrypted.stat().st_size or data['encryptedBytes'] <= 52:
         raise ValueError('El tamaño de la base cifrada no coincide con el manifiesto')
     if not isinstance(data.get('sha256'), str) or not re.fullmatch('[0-9a-f]{64}', data['sha256']):

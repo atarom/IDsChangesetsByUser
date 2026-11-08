@@ -10,7 +10,7 @@ class TestsRelease(unittest.TestCase):
         self.folder = Path(self.temp.name)
         self.payload = b'WTHDB01\0' + bytes(range(80))
         (self.folder / 'whosthat.db.gz.enc').write_bytes(self.payload)
-        self.meta = {'format': 'WTHDB01', 'filename': 'whosthat.db.gz.enc', 'dateEpoch': '2005-04-17', 'sequenceNumber': 123, 'records': 2631265, 'encryptedBytes': len(self.payload), 'sqliteBytes': 74868326, 'sha256': hashlib.sha256(self.payload).hexdigest()}
+        self.meta = {'format': 'WTHDB01', 'filename': 'whosthat.db.gz.enc', 'dateEpoch': '2005-04-17', 'sequenceNumber': 123, 'records': 2631265, 'encryptedBytes': len(self.payload), 'sqliteBytes': 74868326, 'sha256': hashlib.sha256(self.payload).hexdigest(), 'statistics': {'users': 3, 'uniqueNames': 3, 'sharedNames': 1, 'usersByNameCount': {'1': 2, '2': 1, '3': 0, '4': 0, '5+': 0}, 'maxNamesPerUser': 2, 'avgNamesPerUser': 1.33, 'firstObserved': '2005-04-17', 'lastObserved': '2026-11-07', 'avgObservedDays': 330.1}}
         self.save()
     def tearDown(self):
         self.temp.cleanup()
@@ -18,10 +18,11 @@ class TestsRelease(unittest.TestCase):
         (self.folder / 'version.json').write_text(json.dumps(self.meta), encoding='utf-8')
     def test_acepta_release_actual(self):
         validar(self.folder)
-    def test_acepta_estadisticas_publicadas(self):
-        self.meta['statistics'] = {'users': 3, 'uniqueNames': 3, 'sharedNames': 1, 'usersByNameCount': {'1': 2, '2': 1, '3': 0, '4': 0, '5+': 0}, 'maxNamesPerUser': 2, 'avgNamesPerUser': 1.33, 'firstObserved': '2005-04-17', 'lastObserved': '2026-11-07', 'avgObservedDays': 330.1}
+    def test_rechaza_manifiesto_sin_estadisticas(self):
+        self.meta.pop('statistics')
         self.save()
-        validar(self.folder)
+        with self.assertRaisesRegex(ValueError,'Estadísticas del manifiesto obligatorias'):
+            validar(self.folder)
     def test_rechaza_estadisticas_incoherentes(self):
         self.meta['statistics'] = {'users': 3, 'uniqueNames': 3, 'sharedNames': 1, 'usersByNameCount': {'1': 4, '2': 1, '3': 0, '4': 0, '5+': 0}, 'maxNamesPerUser': 2, 'avgNamesPerUser': 1.33, 'firstObserved': '2005-04-17', 'lastObserved': '2026-11-07', 'avgObservedDays': 330.1}
         self.save()

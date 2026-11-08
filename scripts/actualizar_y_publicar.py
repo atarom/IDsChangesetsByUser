@@ -39,8 +39,6 @@ def main():
         print('Descifrando una copia temporal...', flush=True)
         stage = time.perf_counter()
         decrypt_database(args.encrypted, sqlite_file, password)
-        with sqlite3.connect(sqlite_file) as con:
-            con.execute("DELETE FROM metadata WHERE key NOT IN ('sequenceNumber','dateEpoch')")
         timings['Descifrado'] = time.perf_counter() - stage
         print('Actualizando diffs horarios...', flush=True)
         stage = time.perf_counter()

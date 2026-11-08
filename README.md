@@ -8,7 +8,7 @@ Consulta y selecciona changesets de usuarios de OpenStreetMap sobre un mapa **Op
 
 Los changesets con modificaciones y sin `bbox` se incluyen en «Todos los IDs» y en «Detalles» como **Sin ubicación**; se pueden seleccionar individualmente o por rango y abrir en OSM, pero no aparecen en el mapa ni se seleccionan mediante lazo. Cuando existen, un contador sobre el mapa permite filtrar el listado a esos cambios y volver a mostrar todos. Dentro del listado filtrado, `Ctrl+A` o `⌘+A` selecciona todos los cambios sin ubicación. Los changesets sin modificaciones y las coordenadas inválidas se registran en «Errores».
 
-El historial de nombres **SQLite** se distribuye cifrado en `data/whosthat.db.gz.enc` (GZIP + AES-256-GCM).
+El historial de nombres **SQLite** se distribuye cifrado en `data/whosthat.db.gz.enc` (GZIP compatible generado con Zopfli 5 + AES-256-GCM).
 
 **La web funciona sin contraseña ni descarga previa de SQLite.** Para consultar los nombres anteriores:
 
@@ -23,7 +23,7 @@ El historial de nombres **SQLite** se distribuye cifrado en `data/whosthat.db.gz
 
 ### Explorador histórico independiente
 
-El botón **«⌕ Explorar»** junto a «Nombres conocidos» permite desbloquear la BD **sin cargar ningún usuario**. Abre un explorador con tres pestañas: búsqueda por nombre exacto, fragmento, prefijo o regex, exploración por fechas de observación y ranking de UID con más nombres distintos registrados. Las consultas se muestran por páginas de 100 resultados. Al seleccionar un UID se muestran sus nombres históricos y se ofrece cargar sus changesets en el visor.
+El botón **«⌕ Explorar»** junto a «Nombres conocidos» permite desbloquear la BD **sin cargar ningún usuario**. Abre un explorador con cuatro pestañas: búsqueda por nombre exacto, fragmento, prefijo o regex; exploración por fechas de observación; ranking de UID con más nombres distintos; y nombres históricos compartidos por distintos UID. Las consultas se muestran por páginas de 100 resultados, con opciones para ordenar y exportar hasta 25.000 resultados a CSV o JSON. Al seleccionar un UID se muestran sus nombres históricos y se ofrece cargar sus changesets en el visor.
 
 La primera y la última observación de cada nombre no son fechas exactas de renombrado. El ranking cuenta nombres distintos registrados por UID; no representa necesariamente todos sus cambios reales de nombre.
 
@@ -33,7 +33,7 @@ La tabla `whosthat` guarda `user_id`, `user_name`, `date_first` y `date_span`. `
 
 ### Actualización diaria de SQLite
 
-El historial se mantiene exclusivamente en el Release `whosthat-data`, que contiene `whosthat.db.gz.enc` y `version.json`. GitHub Actions descarga los dos archivos, verifica su SHA-256, descifra la base, procesa las réplicas horarias de OSM pendientes y vuelve a cifrar la base SQLite.
+El historial se mantiene exclusivamente en el Release `whosthat-data`, que contiene `whosthat.db.gz.enc` y `version.json`. GitHub Actions descarga los dos archivos, verifica su SHA-256, descifra la base, procesa las réplicas horarias de OSM pendientes, ejecuta `VACUUM` y comprime con Zopfli 5 antes de cifrar de nuevo la base SQLite.
 
 ## Privacidad y atribución
 
