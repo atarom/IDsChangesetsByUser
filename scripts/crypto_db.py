@@ -75,8 +75,8 @@ def encrypt_database(db_path, enc_path, password, version_path=None):
     with tempfile.TemporaryDirectory(prefix='whosthat-encrypt-') as td:
         tgz = Path(td) / 'whosthat.sqlite.gz'
         compression_started = time.perf_counter()
-        tgz.write_bytes(zopfli_compress(db_path.read_bytes(), numiterations=5))
-        print(f'Zopfli 5: {db_path.stat().st_size / 1048576:.2f} → {tgz.stat().st_size / 1048576:.2f} MiB en {time.perf_counter() - compression_started:.2f} s.', flush=True)
+        tgz.write_bytes(zopfli_compress(db_path.read_bytes(), numiterations=2))
+        print(f'Zopfli 2: {db_path.stat().st_size / 1048576:.2f} → {tgz.stat().st_size / 1048576:.2f} MiB en {time.perf_counter() - compression_started:.2f} s.', flush=True)
         temporary_enc = Path(td) / 'whosthat.db.gz.enc'
         encryptor = Cipher(algorithms.AES(key), modes.GCM(iv)).encryptor()
         with open(tgz, 'rb') as zipped, open(temporary_enc, 'wb') as out:
