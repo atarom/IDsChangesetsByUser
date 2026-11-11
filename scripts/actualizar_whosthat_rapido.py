@@ -17,7 +17,10 @@ AGENT = 'IDsChangesetsByUser/1.0 (+https://github.com/atarom/IDsChangesetsByUser
 STATE_RE = re.compile(rb'(?m)^sequenceNumber=(\d+)\s*$')
 DATE_RE = re.compile(r'^\d{4}-\d{2}-\d{2}$')
 UPSERT = '''INSERT INTO whosthat (user_id, user_name, date_first, date_span)
-VALUES (?, ?, ?, ?)
+SELECT b.user_id,b.user_name,b.date_first,b.date_last-b.date_first
+FROM temp.whosthat_stats_batch AS b
+LEFT JOIN whosthat AS w ON w.user_id=b.user_id AND w.user_name=b.user_name
+WHERE w.user_id IS NULL OR b.date_first < w.date_first OR b.date_last > w.date_first+w.date_span
 ON CONFLICT(user_id, user_name) DO UPDATE SET
   date_span = max(whosthat.date_first+whosthat.date_span,excluded.date_first+excluded.date_span)-min(whosthat.date_first,excluded.date_first),
   date_first = min(whosthat.date_first,excluded.date_first)'''
@@ -94,7 +97,7 @@ def apply_diff(con, seq, rows):
         changes = con.execute(STATS_SQL).fetchone()
         if sum(changes) != len(rows):
             raise ValueError('Los pares usuario/nombre del lote no son únicos')
-        con.executemany(UPSERT, ((uid, name, a, b-a) for uid, name, a, b in converted))
+        con.execute(UPSERT)
         con.execute("UPDATE metadata SET value=? WHERE key='sequenceNumber'", (str(seq),))
         con.commit()
         return changes
