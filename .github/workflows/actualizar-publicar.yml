@@ -49,15 +49,8 @@ jobs:
       - name: Recuperar base cifrada persistente desde Releases
         shell: bash
         run: |
-          gh release download whosthat-data --pattern 'whosthat.db.*.enc' --dir data
-          gh release download whosthat-data --pattern 'version.json' --dir data --clobber
-          if [ ! -f data/whosthat.db.zst.enc ] && [ -f data/whosthat.db.gz.enc ] && [ "$(python -c 'import json;print(json.load(open("data/version.json"))["filename"])')" = 'whosthat.db.zst.enc' ]; then
-            echo 'Restaurando el manifiesto y la base válidos de la copia del Action 43274692075'
-            mkdir -p restored
-            gh run download 43274692075 -n whosthat-backup-2026-11-12 -D restored
-            test -f restored/whosthat.db.gz.enc && test -f restored/version.json
-            cp restored/whosthat.db.gz.enc restored/version.json data/
-          fi
+          gh release download whosthat-data --pattern 'whosthat.db.zst.enc' --dir data
+          gh release download whosthat-data --pattern 'version.json' --dir data
       - name: Verificar integridad de la base cifrada publicada
         run: python -m scripts.validar_release data
       - name: Comprobar copia semanal
@@ -74,7 +67,7 @@ jobs:
         with:
           name: whosthat-backup-${{ steps.copia.outputs.fecha }}
           path: |
-            data/whosthat.db.*.enc
+            data/whosthat.db.zst.enc
             data/version.json
           if-no-files-found: error
           retention-days: 30
@@ -95,9 +88,6 @@ jobs:
         run: |
           inicio=$SECONDS
           gh release upload whosthat-data data/whosthat.db.zst.enc data/version.json --clobber
-          if gh release view whosthat-data --json assets --jq '.assets[].name' | grep -Fxq 'whosthat.db.gz.enc'; then
-            gh release delete-asset whosthat-data whosthat.db.gz.enc -y
-          fi
           echo "TIEMPO PUBLICACIÓN RELEASE: $((SECONDS - inicio)) s"
       - name: Preparar sitio estático (sin scripts de gestión ni ficheros privados)
         shell: bash
