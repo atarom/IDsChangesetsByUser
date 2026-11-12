@@ -36,7 +36,7 @@ jobs:
           node --test tests/*.test.cjs
       - uses: actions/setup-python@v7
         with:
-          python-version: '3.15'
+          python-version: '3.14'
       - name: Preparar biblioteca Python
         run: python -m pip install -r requirements.txt
       - name: Validar actualización de base Python
