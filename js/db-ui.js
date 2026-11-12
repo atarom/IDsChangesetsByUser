@@ -228,7 +228,7 @@
       ['Tamaño SQLite', size(manifest.sqliteBytes)],
       ['Tamaño cifrado', size(manifest.encryptedBytes)],
       ['Reducción de tamaño', percentage(1 - manifest.encryptedBytes / manifest.sqliteBytes)],
-      ['Cifrado', 'SQLite + GZIP + AES-256-GCM'],
+      ['Cifrado', 'SQLite + ZSTD 10 + AES-256-GCM'],
       ['Fecha de referencia', localDate(manifest.dateEpoch)],
       ['SHA-256', manifest.sha256],
     ]));

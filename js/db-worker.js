@@ -1,5 +1,7 @@
 'use strict';
 const CDN = 'https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.15.2/';
+const ZSTD_CDN = 'https://cdn.jsdelivr.net/npm/fzstd@0.1.1/umd/index.js';
+const ZSTD_FALLBACK = 'https://unpkg.com/fzstd@0.1.1/umd/index.js';
 const HEADER = new TextEncoder().encode('WTHDB01\0');
 const ITERATIONS = 200000;
 const EPOCH_MS = Date.UTC(2005, 3, 17);
@@ -72,7 +74,7 @@ async function pruneOldPayloads(activeKey) {
   });
 }
 function checkManifest(data) {
-  if (!data || data.format !== 'WTHDB01' || data.dateEpoch !== '2005-04-17' || !/^[a-f0-9]{64}$/.test(data.sha256) || !Number.isSafeInteger(data.sequenceNumber) || !Number.isSafeInteger(data.records) || !Number.isSafeInteger(data.sqliteBytes) || !Number.isSafeInteger(data.encryptedBytes)) throw Error('La base publicada no utiliza el formato exclusivo de fechas relativas requerido.');
+  if (!data || data.format !== 'WTHDB01' || (data.filename !== undefined && data.filename !== 'whosthat.db.zst.enc') || data.dateEpoch !== '2005-04-17' || !/^[a-f0-9]{64}$/.test(data.sha256) || !Number.isSafeInteger(data.sequenceNumber) || !Number.isSafeInteger(data.records) || !Number.isSafeInteger(data.sqliteBytes) || !Number.isSafeInteger(data.encryptedBytes)) throw Error('La base publicada no utiliza el formato exclusivo de fechas relativas requerido.');
   return data;
 }
 async function fetchManifest() {
@@ -82,11 +84,13 @@ async function fetchManifest() {
     const response = await fetch(url, {cache: 'no-store'});
     if (!response.ok) throw Error(`HTTP ${response.status}`);
     data = checkManifest(await response.json());
+    if (data.filename !== 'whosthat.db.zst.enc') throw Error('El manifiesto no contiene la base ZSTD requerida.');
     try { await putItem('manifest', data); } catch (error) { progress('Aviso: no se pudo guardar el manifiesto.'); }
   } catch (error) {
     data = await readItem('manifest');
     if (!data) throw Error(`No se pudo leer un manifiesto válido: ${error.message}`);
     checkManifest(data);
+    if (data.filename !== 'whosthat.db.zst.enc') throw Error('La versión guardada no utiliza ZSTD. Conéctate para actualizar.');
     progress('Sin conexión: usando la última versión guardada en este navegador.');
   }
   version = data;
@@ -141,6 +145,17 @@ async function importSQL() {
     throw Error('No se ha podido cargar sql.js desde cdnjs. Necesitas conexión a Internet para la biblioteca: ' + error.message);
   }
 }
+function unpackZstd(bytes) {
+  if (!self.fzstd?.decompress) {
+    try { importScripts(ZSTD_CDN); }
+    catch (error) {
+      try { importScripts(ZSTD_FALLBACK); }
+      catch (fallback) { throw Error('No se ha podido cargar el descompresor ZSTD. Necesitas conexión a Internet: ' + fallback.message); }
+    }
+  }
+  if (!self.fzstd?.decompress) throw Error('El descompresor ZSTD no está disponible.');
+  return self.fzstd.decompress(new Uint8Array(bytes));
+}
 async function unlock(password, remember, savedKey = null) {
   if (!version) await fetchManifest();
   let blob = await downloadPayload();
@@ -164,14 +179,13 @@ async function unlock(password, remember, savedKey = null) {
     throw Error('Contraseña incorrecta o base cifrada dañada.');
   }
   encrypted = null;
-  progress(`Descomprimiendo SQLite (${(version.sqliteBytes / 1048576).toFixed(0)} MiB). Puede tardar…`);
-  if (typeof DecompressionStream !== 'function') throw Error('Tu navegador no admite DecompressionStream (gzip). Utiliza Chrome, Firefox o Edge actualizados.');
-  const stream = new Blob([compressed]).stream().pipeThrough(new DecompressionStream('gzip'));
+  progress(`Descomprimiendo SQLite con ZSTD (${(version.sqliteBytes / 1048576).toFixed(0)} MiB). Puede tardar…`);
+  let sqliteArray = unpackZstd(compressed);
   compressed = null;
-  let sqliteArray = await new Response(stream).arrayBuffer();
+  if (sqliteArray.byteLength !== version.sqliteBytes) throw Error('El tamaño de SQLite no coincide con el manifiesto.');
   progress('Abriendo SQLite y verificando el formato…');
   const SQL = await importSQL();
-  const freshDB = new SQL.Database(new Uint8Array(sqliteArray));
+  const freshDB = new SQL.Database(sqliteArray);
   sqliteArray = null;
   try {
     const values = freshDB.exec('SELECT key,value FROM metadata');

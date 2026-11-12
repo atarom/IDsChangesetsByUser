@@ -13,7 +13,7 @@ import time
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
-from zopfli.gzip import compress as zopfli_compress
+import zstandard
 try:
     from .formato_fechas import EPOCH_TEXT, assert_data_ranges, validate_schema
 except ImportError:
@@ -49,9 +49,11 @@ def calculate_statistics(con):
         'lastObserved': (epoch + timedelta(days=dates[1])).isoformat() if dates[1] is not None else None,
         'avgObservedDays': round(dates[2], 1) if dates[2] is not None else None,
     }
-def encrypt_database(db_path, enc_path, password, version_path=None):
+def encrypt_database(db_path, enc_path, password, version_path=None, salt_source=None):
     db_path = Path(db_path)
     enc_path = Path(enc_path)
+    if enc_path.name != 'whosthat.db.zst.enc':
+        raise ValueError('El destino cifrado debe llamarse whosthat.db.zst.enc')
     if not db_path.is_file():
         raise FileNotFoundError(db_path)
     con = sqlite3.connect(f'file:{db_path.resolve()}?mode=ro', uri=True)
@@ -67,17 +69,19 @@ def encrypt_database(db_path, enc_path, password, version_path=None):
         con.close()
     if enc_path.exists():
         salt, _old_iv = inspect_header(enc_path)
+    elif salt_source and Path(salt_source).is_file():
+        salt, _old_iv = inspect_header(salt_source)
     else:
         salt = os.urandom(SALT_BYTES)
     iv = os.urandom(IV_BYTES)
     key = derive(password, salt)
     enc_path.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix='whosthat-encrypt-') as td:
-        tgz = Path(td) / 'whosthat.sqlite.gz'
+        tgz = Path(td) / 'whosthat.sqlite.zst'
         compression_started = time.perf_counter()
-        tgz.write_bytes(zopfli_compress(db_path.read_bytes(), numiterations=2))
-        print(f'Zopfli 2: {db_path.stat().st_size / 1048576:.2f} → {tgz.stat().st_size / 1048576:.2f} MiB en {time.perf_counter() - compression_started:.2f} s.', flush=True)
-        temporary_enc = Path(td) / 'whosthat.db.gz.enc'
+        tgz.write_bytes(zstandard.ZstdCompressor(level=10).compress(db_path.read_bytes()))
+        print(f'ZSTD 10: {db_path.stat().st_size / 1048576:.2f} → {tgz.stat().st_size / 1048576:.2f} MiB en {time.perf_counter() - compression_started:.2f} s.', flush=True)
+        temporary_enc = Path(td) / 'whosthat.db.zst.enc'
         encryptor = Cipher(algorithms.AES(key), modes.GCM(iv)).encryptor()
         with open(tgz, 'rb') as zipped, open(temporary_enc, 'wb') as out:
             out.write(MAGIC + salt + iv)
@@ -123,8 +127,8 @@ def decrypt_database(enc_path, output_path, password):
     decryptor = Cipher(algorithms.AES(derive(password, salt)), modes.GCM(iv, tag)).decryptor()
     output_path.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix='whosthat-decrypt-') as td:
-        tmp_gz = Path(td) / 'database.sqlite.gz'
-        with open(enc_path, 'rb') as source, open(tmp_gz, 'wb') as target:
+        tmp_compressed = Path(td) / 'database.compressed'
+        with open(enc_path, 'rb') as source, open(tmp_compressed, 'wb') as target:
             source.seek(36)
             remaining = size - 36 - 16
             while remaining:
@@ -136,8 +140,15 @@ def decrypt_database(enc_path, output_path, password):
             decryptor.finalize()
         tmp_db = output_path.with_suffix(output_path.suffix + '.tmp')
         try:
-            with gzip.open(tmp_gz, 'rb') as gz, open(tmp_db, 'wb') as destination:
-                shutil.copyfileobj(gz, destination, CHUNK)
+            with open(tmp_compressed, 'rb') as source, open(tmp_db, 'wb') as destination:
+                if enc_path.name.endswith('.zst.enc'):
+                    with zstandard.ZstdDecompressor().stream_reader(source) as reader:
+                        shutil.copyfileobj(reader, destination, CHUNK)
+                elif enc_path.name.endswith('.gz.enc'):
+                    with gzip.GzipFile(fileobj=source) as reader:
+                        shutil.copyfileobj(reader, destination, CHUNK)
+                else:
+                    raise ValueError('Extensión de base cifrada no reconocida')
             connection = sqlite3.connect(f'file:{tmp_db.resolve()}?mode=ro', uri=True)
             try:
                 if connection.execute('PRAGMA quick_check').fetchone()[0] != 'ok':

@@ -9,8 +9,8 @@ class TestsRelease(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory()
         self.folder = Path(self.temp.name)
         self.payload = b'WTHDB01\0' + bytes(range(80))
-        (self.folder / 'whosthat.db.gz.enc').write_bytes(self.payload)
-        self.meta = {'format': 'WTHDB01', 'filename': 'whosthat.db.gz.enc', 'dateEpoch': '2005-04-17', 'sequenceNumber': 123, 'records': 2631265, 'encryptedBytes': len(self.payload), 'sqliteBytes': 74868326, 'sha256': hashlib.sha256(self.payload).hexdigest(), 'statistics': {'users': 3, 'uniqueNames': 3, 'sharedNames': 1, 'usersByNameCount': {'1': 2, '2': 1, '3': 0, '4': 0, '5+': 0}, 'maxNamesPerUser': 2, 'avgNamesPerUser': 1.33, 'firstObserved': '2005-04-17', 'lastObserved': '2026-11-07', 'avgObservedDays': 330.1}}
+        (self.folder / 'whosthat.db.zst.enc').write_bytes(self.payload)
+        self.meta = {'format': 'WTHDB01', 'filename': 'whosthat.db.zst.enc', 'dateEpoch': '2005-04-17', 'sequenceNumber': 123, 'records': 2631265, 'encryptedBytes': len(self.payload), 'sqliteBytes': 74868326, 'sha256': hashlib.sha256(self.payload).hexdigest(), 'statistics': {'users': 3, 'uniqueNames': 3, 'sharedNames': 1, 'usersByNameCount': {'1': 2, '2': 1, '3': 0, '4': 0, '5+': 0}, 'maxNamesPerUser': 2, 'avgNamesPerUser': 1.33, 'firstObserved': '2005-04-17', 'lastObserved': '2026-11-07', 'avgObservedDays': 330.1}}
         self.save()
     def tearDown(self):
         self.temp.cleanup()
@@ -18,6 +18,16 @@ class TestsRelease(unittest.TestCase):
         (self.folder / 'version.json').write_text(json.dumps(self.meta), encoding='utf-8')
     def test_acepta_release_actual(self):
         validar(self.folder)
+    def test_acepta_release_gzip_para_migracion(self):
+        (self.folder / 'whosthat.db.zst.enc').rename(self.folder / 'whosthat.db.gz.enc')
+        self.meta['filename'] = 'whosthat.db.gz.enc'
+        self.save()
+        validar(self.folder)
+    def test_rechaza_extension_desconocida(self):
+        self.meta['filename'] = 'whosthat.db.otro.enc'
+        self.save()
+        with self.assertRaisesRegex(ValueError,'formato de fechas relativas'):
+            validar(self.folder)
     def test_rechaza_manifiesto_sin_estadisticas(self):
         self.meta.pop('statistics')
         self.save()
@@ -34,7 +44,7 @@ class TestsRelease(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'fechas relativas'):
             validar(self.folder)
     def test_rechaza_archivo_cifrado_distinto(self):
-        (self.folder / 'whosthat.db.gz.enc').write_bytes(self.payload + b'X')
+        (self.folder / 'whosthat.db.zst.enc').write_bytes(self.payload + b'X')
         with self.assertRaisesRegex(ValueError, 'tamaño'):
             validar(self.folder)
     def test_rechaza_checksum_distinto(self):

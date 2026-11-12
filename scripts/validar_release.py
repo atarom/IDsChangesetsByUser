@@ -5,15 +5,19 @@ import math
 from pathlib import Path
 import re
 MAGIC = b'WTHDB01\x00'
+VALID_FILES = {'whosthat.db.gz.enc', 'whosthat.db.zst.enc'}
 def validar(folder):
     folder = Path(folder)
     manifest = folder / 'version.json'
-    encrypted = folder / 'whosthat.db.gz.enc'
-    if not manifest.is_file() or not encrypted.is_file():
-        raise ValueError('Faltan version.json o whosthat.db.gz.enc')
+    if not manifest.is_file():
+        raise ValueError('Falta version.json')
     data = json.loads(manifest.read_text(encoding='utf-8'))
-    if data.get('format') != 'WTHDB01' or data.get('filename') != encrypted.name or data.get('dateEpoch') != '2005-04-17':
+    filename = data.get('filename')
+    if data.get('format') != 'WTHDB01' or not isinstance(filename, str) or filename not in VALID_FILES or data.get('dateEpoch') != '2005-04-17':
         raise ValueError('El manifiesto no corresponde al formato de fechas relativas requerido')
+    encrypted = folder / filename
+    if not encrypted.is_file():
+        raise ValueError('Falta el archivo cifrado indicado en version.json: ' + filename)
     for key in ('sequenceNumber', 'records', 'encryptedBytes', 'sqliteBytes'):
         value = data.get(key)
         if type(value) is not int or value <= 0:
@@ -40,7 +44,7 @@ def validar(folder):
     digest = hashlib.sha256()
     with encrypted.open('rb') as file:
         if file.read(len(MAGIC)) != MAGIC:
-            raise ValueError('La cabecera AES/GZIP no es la esperada')
+            raise ValueError('La cabecera AES no es la esperada')
         file.seek(0)
         for chunk in iter(lambda: file.read(1024 * 1024), b''):
             digest.update(chunk)

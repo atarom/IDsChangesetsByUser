@@ -21,7 +21,7 @@ def compact_database(sqlite_file):
     return time.perf_counter() - started
 def main():
     p = argparse.ArgumentParser(description='Actualizar base cifrada Who\'s That?')
-    p.add_argument('--encrypted', type=Path, default=Path(__file__).parent.parent / 'data' / 'whosthat.db.gz.enc')
+    p.add_argument('--encrypted', type=Path, default=Path(__file__).parent.parent / 'data' / 'whosthat.db.zst.enc')
     p.add_argument('--version', type=Path, default=Path(__file__).parent.parent / 'data' / 'version.json')
     p.add_argument('--max-files', type=int, default=None, help='Límite de diffs horarios; sin límite por defecto')
     p.add_argument('--workers', type=int, default=4)
@@ -31,6 +31,12 @@ def main():
         p.error('workers debe estar entre 1 y 8')
     if args.max_files is not None and args.max_files < 1:
         p.error('--max-files debe ser al menos 1')
+    source_encrypted = args.encrypted
+    if not source_encrypted.is_file() and args.encrypted.name == 'whosthat.db.zst.enc':
+        legacy = args.encrypted.with_name('whosthat.db.gz.enc')
+        if legacy.is_file():
+            print('Migrando base cifrada GZIP a ZSTD...', flush=True)
+            source_encrypted = legacy
     password = os.environ.get('WHOSTHAT_DB_PASSWORD') or getpass.getpass('Contraseña de la base: ')
     started = time.perf_counter()
     timings = {}
@@ -38,7 +44,7 @@ def main():
         sqlite_file = Path(td) / 'whosthat.sqlite'
         print('Descifrando una copia temporal...', flush=True)
         stage = time.perf_counter()
-        decrypt_database(args.encrypted, sqlite_file, password)
+        decrypt_database(source_encrypted, sqlite_file, password)
         timings['Descifrado'] = time.perf_counter() - stage
         print('Actualizando diffs horarios...', flush=True)
         stage = time.perf_counter()
@@ -48,7 +54,7 @@ def main():
         timings['VACUUM'] = compact_database(sqlite_file)
         print('Validando, comprimiendo y cifrando SQLite...', flush=True)
         stage = time.perf_counter()
-        meta = encrypt_database(sqlite_file, args.encrypted, password, version_path=args.version)
+        meta = encrypt_database(sqlite_file, args.encrypted, password, version_path=args.version, salt_source=source_encrypted)
         timings['Validación, compresión y cifrado'] = time.perf_counter() - stage
         print(f"Actualización preparada, secuencia {meta['sequenceNumber']}; {meta['records']} registros.", flush=True)
         print('TIEMPOS ETAPAS: ' + ' | '.join(f'{name} {seconds:.2f} s' for name, seconds in timings.items()), flush=True)

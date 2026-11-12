@@ -8,7 +8,7 @@ Consulta y selecciona changesets de usuarios de OpenStreetMap sobre un mapa **Op
 
 Los changesets con modificaciones y sin `bbox` se incluyen en «Todos los IDs» y en «Detalles» como **Sin ubicación**; se pueden seleccionar individualmente o por rango y abrir en OSM, pero no aparecen en el mapa ni se seleccionan mediante lazo. Cuando existen, un contador sobre el mapa permite filtrar el listado a esos cambios y volver a mostrar todos. Dentro del listado filtrado, `Ctrl+A` o `⌘+A` selecciona todos los cambios sin ubicación. Los changesets sin modificaciones y las coordenadas inválidas se registran en «Errores».
 
-El historial de nombres **SQLite** se distribuye cifrado en `data/whosthat.db.gz.enc` (GZIP compatible generado con Zopfli 5 + AES-256-GCM).
+El historial de nombres **SQLite** se distribuye cifrado en `data/whosthat.db.zst.enc` (ZSTD nivel 10 + AES-256-GCM).
 
 **La web funciona sin contraseña ni descarga previa de SQLite.** Para consultar los nombres anteriores:
 
@@ -20,6 +20,7 @@ El historial de nombres **SQLite** se distribuye cifrado en `data/whosthat.db.gz
 - **Recordar acceso en este navegador** almacena una clave de descifrado no exportable en IndexedDB.
 - La base cifrada puede guardarse en IndexedDB; una publicación nueva se descarga si cambia su SHA-256.
 - Las búsquedas de nombres históricos se realizan localmente por UID.
+- El navegador utiliza `sql.js` y `fzstd` para abrir la SQLite comprimida con ZSTD.
 
 ### Explorador histórico independiente
 
@@ -33,7 +34,7 @@ La tabla `whosthat` guarda `user_id`, `user_name`, `date_first` y `date_span`. `
 
 ### Actualización diaria de SQLite
 
-El historial se mantiene exclusivamente en el Release `whosthat-data`, que contiene `whosthat.db.gz.enc` y `version.json`. GitHub Actions descarga los dos archivos, verifica su SHA-256, descifra la base, procesa las réplicas horarias de OSM pendientes, ejecuta `VACUUM` y comprime con Zopfli 5 antes de cifrar de nuevo la base SQLite.
+El historial se mantiene exclusivamente en el Release `whosthat-data`, que contiene `whosthat.db.zst.enc` y `version.json`. GitHub Actions verifica su SHA-256, descifra la base, procesa las réplicas horarias de OSM pendientes, ejecuta `VACUUM` y comprime con ZSTD 10 antes de cifrar de nuevo la base SQLite. La primera actualización tras instalar esta versión convierte automáticamente el Release antiguo con GZIP a ZSTD y conserva la sal de cifrado para mantener las claves recordadas. Mientras el Release siga en GZIP, el workflow de despliegue por cambios en `main` conserva la web anterior; ejecuta una vez manualmente el Action de actualización para completar la migración.
 
 ## Privacidad y atribución
 
