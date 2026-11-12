@@ -28,19 +28,33 @@ jobs:
         run: |
           for file in js/*.js; do node --check "$file"; done
           node --test tests/*.test.cjs
+      - name: Comprobar disponibilidad de la nueva base ZSTD
+        id: release
+        shell: bash
+        run: |
+          if gh release view whosthat-data --json assets --jq '.assets[].name' | grep -Fxq 'whosthat.db.zst.enc'; then
+            echo 'ready=true' >> "$GITHUB_OUTPUT"
+          else
+            echo 'El Release todavía utiliza GZIP. Se conserva la web publicada hasta ejecutar el Action de actualización.'
+            echo 'ready=false' >> "$GITHUB_OUTPUT"
+          fi
       - name: Preparar web y descargar base cifrada publicada
+        if: steps.release.outputs.ready == 'true'
         shell: bash
         run: |
           mkdir -p _site/css _site/js _site/data
           cp index.html _site/
           cp css/*.css _site/css/
           cp js/*.js _site/js/
-          gh release download whosthat-data --pattern 'whosthat.db.gz.enc' --dir _site/data
+          gh release download whosthat-data --pattern 'whosthat.db.zst.enc' --dir _site/data
           gh release download whosthat-data --pattern 'version.json' --dir _site/data
           python3 -m scripts.validar_release _site/data
       - uses: actions/configure-pages@v6
+        if: steps.release.outputs.ready == 'true'
       - uses: actions/upload-pages-artifact@v5
+        if: steps.release.outputs.ready == 'true'
         with:
           path: _site
       - id: deployment
+        if: steps.release.outputs.ready == 'true'
         uses: actions/deploy-pages@v5

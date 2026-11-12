@@ -47,12 +47,19 @@ jobs:
           test -n "$WHOSTHAT_DB_PASSWORD" || { echo 'Configura WHOSTHAT_DB_PASSWORD en Secrets.'; exit 1; }
           gh release view whosthat-data >/dev/null || { echo 'Falta el Release whosthat-data con la base de fechas relativas.'; exit 1; }
       - name: Recuperar base cifrada persistente desde Releases
-        run: gh release download whosthat-data --pattern 'whosthat.db.gz.enc' --dir data
-      - name: Verificar integridad de la base cifrada publicada
         shell: bash
         run: |
+          gh release download whosthat-data --pattern 'whosthat.db.*.enc' --dir data
           gh release download whosthat-data --pattern 'version.json' --dir data --clobber
-          python -m scripts.validar_release data
+          if [ ! -f data/whosthat.db.zst.enc ] && [ -f data/whosthat.db.gz.enc ] && [ "$(python -c 'import json;print(json.load(open("data/version.json"))["filename"])')" = 'whosthat.db.zst.enc' ]; then
+            echo 'Restaurando el manifiesto y la base válidos de la copia del Action 43274692075'
+            mkdir -p restored
+            gh run download 43274692075 -n whosthat-backup-2026-11-12 -D restored
+            test -f restored/whosthat.db.gz.enc && test -f restored/version.json
+            cp restored/whosthat.db.gz.enc restored/version.json data/
+          fi
+      - name: Verificar integridad de la base cifrada publicada
+        run: python -m scripts.validar_release data
       - name: Comprobar copia semanal
         id: copia
         shell: bash
@@ -67,7 +74,7 @@ jobs:
         with:
           name: whosthat-backup-${{ steps.copia.outputs.fecha }}
           path: |
-            data/whosthat.db.gz.enc
+            data/whosthat.db.*.enc
             data/version.json
           if-no-files-found: error
           retention-days: 30
@@ -87,7 +94,10 @@ jobs:
         shell: bash
         run: |
           inicio=$SECONDS
-          gh release upload whosthat-data data/whosthat.db.gz.enc data/version.json --clobber
+          gh release upload whosthat-data data/whosthat.db.zst.enc data/version.json --clobber
+          if gh release view whosthat-data --json assets --jq '.assets[].name' | grep -Fxq 'whosthat.db.gz.enc'; then
+            gh release delete-asset whosthat-data whosthat.db.gz.enc -y
+          fi
           echo "TIEMPO PUBLICACIÓN RELEASE: $((SECONDS - inicio)) s"
       - name: Preparar sitio estático (sin scripts de gestión ni ficheros privados)
         shell: bash
@@ -96,7 +106,7 @@ jobs:
           cp index.html _site/
           cp css/*.css _site/css/
           cp js/*.js _site/js/
-          cp data/whosthat.db.gz.enc data/version.json _site/data/
+          cp data/whosthat.db.zst.enc data/version.json _site/data/
       - uses: actions/configure-pages@v6
       - uses: actions/upload-pages-artifact@v5
         with:
