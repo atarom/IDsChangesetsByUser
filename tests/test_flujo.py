@@ -117,39 +117,25 @@ class TestsFlujo(unittest.TestCase):
         with patch('crypto_db.zstandard.ZstdCompressor', wraps=zstandard.ZstdCompressor) as compressor:
             encrypt_database(self.raw,self.enc,self.password,version_path=self.manifest)
         compressor.assert_called_once_with(level=10)
-        restored=self.folder/'zopfli.sqlite'
+        restored=self.folder/'zstd.sqlite'
         decrypt_database(self.enc,restored,self.password)
         self.assertEqual(restored.read_bytes(),self.raw.read_bytes())
         validar(self.folder)
-    def test_lee_copia_legacy_gzip_sin_alterar_la_sqlite(self):
-        import gzip
-        from crypto_db import MAGIC, derive, SALT_BYTES, IV_BYTES
-        from cryptography.hazmat.primitives.ciphers.aead import AESGCM
-        legacy=self.folder/'whosthat.db.gz.enc'
-        salt=os.urandom(SALT_BYTES)
-        iv=os.urandom(IV_BYTES)
-        legacy.write_bytes(MAGIC+salt+iv+AESGCM(derive(self.password,salt)).encrypt(iv,gzip.compress(self.raw.read_bytes()),None))
-        restored=self.folder/'legacy.sqlite'
-        decrypt_database(legacy,restored,self.password)
-        self.assertEqual(restored.read_bytes(),self.raw.read_bytes())
-    def test_migracion_release_gzip_conserva_salt_y_publica_zstd(self):
-        import gzip
-        from crypto_db import MAGIC, derive, inspect_header
-        from cryptography.hazmat.primitives.ciphers.aead import AESGCM
-        legacy=self.folder/'whosthat.db.gz.enc'
-        salt=os.urandom(16)
-        iv=os.urandom(12)
-        legacy.write_bytes(MAGIC+salt+iv+AESGCM(derive(self.password,salt)).encrypt(iv,gzip.compress(self.raw.read_bytes()),None))
-        self.enc.unlink()
+    def test_actualizacion_zstd_conserva_salt(self):
+        from crypto_db import inspect_header
+        salt, iv = inspect_header(self.enc)
         with patch.object(updater,'remote_state',return_value=100):
             self.run_publisher()
-        self.assertEqual(inspect_header(self.enc)[0],salt)
-        self.assertEqual(json.loads(self.manifest.read_text())['filename'],'whosthat.db.zst.enc')
-        restored=self.folder/'migrada.sqlite'
+        next_salt, next_iv = inspect_header(self.enc)
+        self.assertEqual(salt,next_salt)
+        self.assertNotEqual(iv,next_iv)
+        restored=self.folder/'reabierta.sqlite'
         decrypt_database(self.enc,restored,self.password)
-        with closing(sqlite3.connect(restored)) as migrada, closing(sqlite3.connect(self.raw)) as origen:
-            self.assertEqual(migrada.execute('SELECT * FROM whosthat ORDER BY user_id,user_name').fetchall(),origen.execute('SELECT * FROM whosthat ORDER BY user_id,user_name').fetchall())
-        validar(self.folder)
+        with closing(sqlite3.connect(restored)) as current, closing(sqlite3.connect(self.raw)) as previous:
+            self.assertEqual(current.execute('SELECT * FROM whosthat ORDER BY user_id,user_name').fetchall(),previous.execute('SELECT * FROM whosthat ORDER BY user_id,user_name').fetchall())
+    def test_rechaza_copia_gzip_antigua(self):
+        with self.assertRaisesRegex(ValueError,'ZSTD'):
+            decrypt_database(self.folder/'whosthat.db.gz.enc',self.folder/'legacy.sqlite',self.password)
     def test_error_zstd_no_modifica_archivos_publicables(self):
         before=(self.enc.read_bytes(),self.manifest.read_bytes())
         with patch.object(updater,'remote_state',return_value=100),patch('crypto_db.zstandard.ZstdCompressor',side_effect=RuntimeError('fallo ZSTD simulado')):

@@ -34,7 +34,7 @@ La tabla `whosthat` guarda `user_id`, `user_name`, `date_first` y `date_span`. `
 
 ### Actualización diaria de SQLite
 
-El historial se mantiene exclusivamente en el Release `whosthat-data`, que contiene `whosthat.db.zst.enc` y `version.json`. GitHub Actions verifica su SHA-256, descifra la base, procesa las réplicas horarias de OSM pendientes, ejecuta `VACUUM` y comprime con ZSTD 10 antes de cifrar de nuevo la base SQLite. La primera actualización tras instalar esta versión convierte automáticamente el Release antiguo con GZIP a ZSTD y conserva la sal de cifrado para mantener las claves recordadas. Mientras el Release siga en GZIP, el workflow de despliegue por cambios en `main` conserva la web anterior; ejecuta una vez manualmente el Action de actualización para completar la migración.
+El historial se mantiene exclusivamente en el Release `whosthat-data`, que contiene `whosthat.db.zst.enc` y `version.json`. GitHub Actions verifica su SHA-256, descifra la base, procesa las réplicas horarias de OSM pendientes, ejecuta `VACUUM` y comprime con ZSTD 10 antes de cifrar de nuevo la base SQLite. La actualización reutiliza la sal de cifrado y renueva el vector de inicialización, conservando el acceso recordado en el navegador.
 
 ## Privacidad y atribución
 

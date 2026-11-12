@@ -18,11 +18,12 @@ class TestsRelease(unittest.TestCase):
         (self.folder / 'version.json').write_text(json.dumps(self.meta), encoding='utf-8')
     def test_acepta_release_actual(self):
         validar(self.folder)
-    def test_acepta_release_gzip_para_migracion(self):
+    def test_rechaza_release_gzip_antiguo(self):
         (self.folder / 'whosthat.db.zst.enc').rename(self.folder / 'whosthat.db.gz.enc')
         self.meta['filename'] = 'whosthat.db.gz.enc'
         self.save()
-        validar(self.folder)
+        with self.assertRaisesRegex(ValueError,'formato de fechas relativas'):
+            validar(self.folder)
     def test_rechaza_extension_desconocida(self):
         self.meta['filename'] = 'whosthat.db.otro.enc'
         self.save()

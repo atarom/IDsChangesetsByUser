@@ -5,7 +5,7 @@ import math
 from pathlib import Path
 import re
 MAGIC = b'WTHDB01\x00'
-VALID_FILES = {'whosthat.db.gz.enc', 'whosthat.db.zst.enc'}
+VALID_FILE = 'whosthat.db.zst.enc'
 def validar(folder):
     folder = Path(folder)
     manifest = folder / 'version.json'
@@ -13,7 +13,7 @@ def validar(folder):
         raise ValueError('Falta version.json')
     data = json.loads(manifest.read_text(encoding='utf-8'))
     filename = data.get('filename')
-    if data.get('format') != 'WTHDB01' or not isinstance(filename, str) or filename not in VALID_FILES or data.get('dateEpoch') != '2005-04-17':
+    if data.get('format') != 'WTHDB01' or filename != VALID_FILE or data.get('dateEpoch') != '2005-04-17':
         raise ValueError('El manifiesto no corresponde al formato de fechas relativas requerido')
     encrypted = folder / filename
     if not encrypted.is_file():
